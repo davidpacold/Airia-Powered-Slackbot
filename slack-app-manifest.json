@@ -1,52 +1,21 @@
 {
+    "_documentation": "This manifest can only configure permissions and basic features. URL-dependent features (slash commands, interactive components, webhooks) must be configured manually after app creation due to Slack's security restrictions. See README.md for detailed post-creation setup instructions.",
+    
     "display_information": {
-        "name": "Airia - David Pacold Tenant",
-        "description": "Testing Airia App in my sandbox",
-        "background_color": "#000000",
-        "long_description": "Airia helps teams with AI-powered assistance directly in Slack"
+        "name": "AI Assistant",
+        "description": "AI-powered assistant for Slack",
+        "background_color": "#000000"
     },
     "features": {
+        "bot_user": {
+            "display_name": "AI Assistant",
+            "always_online": true
+        },
         "app_home": {
             "home_tab_enabled": true,
             "messages_tab_enabled": true,
             "messages_tab_read_only_enabled": false
-        },
-        "bot_user": {
-            "display_name": "Airia - David Pacold Tenant",
-            "always_online": true
-        },
-        "slash_commands": [
-            {
-                "command": "/ask-airia",
-                "url": "https://slack-bot.david-pacold.workers.dev/slack",
-                "description": "Ask Airia a question",
-                "usage_hint": "[your question]",
-                "should_escape": false
-            }
-        ],
-        "interactive_components": {
-            "message_actions": [
-                {
-                    "name": "Summarize Thread",
-                    "description": "Get Airia to summarize this thread"
-                }
-            ]
-        },
-        "shortcuts": [
-            {
-                "name": "Ask Airia",
-                "type": "global",
-                "callback_id": "ask_airia_shortcut",
-                "description": "Ask Airia a question from anywhere"
-            }
-        ],
-        "unfurl_domains": ["yourdomain.com"],
-        "workflow_steps": [
-            {
-                "name": "Generate response",
-                "callback_id": "generate_response"
-            }
-        ]
+        }
     },
     "oauth_config": {
         "scopes": {
@@ -57,34 +26,28 @@
                 "chat:write",
                 "chat:write.public",
                 "commands",
-                "groups:read",
                 "im:history",
+                "im:read",
                 "im:write",
-                "mpim:history",
-                "mpim:read",
-                "mpim:write",
+                "links:read",
                 "users:read",
-                "chat:write.customize",
                 "workflow.steps:execute"
             ]
         }
     },
     "settings": {
         "event_subscriptions": {
-            "request_url": "https://slack-bot.david-pacold.workers.dev/slack",
             "bot_events": [
                 "app_home_opened",
                 "app_mention",
-                "message.im"
+                "message.im",
+                "link_shared"
             ]
         },
         "interactivity": {
-            "is_enabled": true,
-            "request_url": "https://slack-bot.david-pacold.workers.dev/slack"
+            "is_enabled": true
         },
         "org_deploy_enabled": false,
-        "socket_mode_enabled": false,
-        "token_rotation_enabled": false,
-        "user_token_rotation_enabled": true
+        "socket_mode_enabled": false
     }
 }

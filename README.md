@@ -169,17 +169,57 @@ open https://api.slack.com/apps
 # Or access https://api.slack.com/apps manually
 ```
 
-#### Quick Setup with App Manifest
+#### App Manifest Limitations
 
-For a faster setup, you can use the provided Slack App Manifest:
+The Slack App Manifest system has limitations with URL-dependent features. This is by design for security reasons:
+
+1. **Security restrictions:** Slack prevents specifying URLs in the initial manifest to protect against malicious manifests that might send data to unauthorized endpoints.
+
+2. **Verification requirement:** Slack requires that all URLs be verified as belonging to you. This verification happens after app creation when you manually enter the URLs.
+
+3. **URL-dependent features that require manual setup:**
+   - Slash commands
+   - Interactive component request URLs
+   - Event subscription request URLs
+   - Workflow steps
+   - Message actions
+
+According to [Slack's documentation](https://api.slack.com/reference/manifests), the manifest can only set up permissions, scopes, and basic app configuration.
+
+For a quick setup that still requires some manual steps:
 
 1. Visit [https://api.slack.com/apps](https://api.slack.com/apps)
 2. Click "Create New App"
 3. Select "From an app manifest"
 4. Choose your workspace
 5. Copy and paste the contents of [slack-app-manifest.json](./slack-app-manifest.json)
-6. Update all URLs to match your Cloudflare Worker URL
-7. Click "Create"
+6. Click "Create"
+
+7. **Required Post-Creation Setup:**
+   After the app is created, you must configure all URL-dependent features:
+
+   - **Slash Commands:**
+     - Click "Slash Commands" in the sidebar
+     - Click "Create New Command"
+     - Command: `/ask-airia`
+     - Request URL: `https://your-worker.workers.dev/slack`
+     - Description: "Ask Airia a question"
+     - Click "Save"
+
+   - **Event Subscriptions:**
+     - Click "Event Subscriptions" in the sidebar
+     - Toggle "Enable Events" to On
+     - Request URL: `https://your-worker.workers.dev/slack`
+     - The bot events should already be subscribed (app_home_opened, app_mention, message.im, link_shared)
+     - Under "App unfurl domains", add yourdomain.com (if using link unfurling)
+     - Click "Save Changes"
+
+   - **Interactivity & Shortcuts:**
+     - Click "Interactivity & Shortcuts" in the sidebar
+     - Toggle to On
+     - Request URL: `https://your-worker.workers.dev/slack`
+     - Add shortcuts, message actions, and workflow steps (see manual setup instructions below)
+     - Click "Save Changes"
 
 #### Manual Setup
 
@@ -188,7 +228,7 @@ If you prefer to configure manually:
 In the browser:
 1. Click "Create New App"
 2. Choose "From scratch"
-3. Enter "Airia Bot" for name, select your workspace, and click "Create App"
+3. Enter "AI Assistant" for name, select your workspace, and click "Create App"
 
 #### 7.2 Configure App Features
 
@@ -288,12 +328,12 @@ Test all Slack integration features:
 
 *Basic Features:*
 1. In Slack, type `/ask-airia test message` in any channel
-2. Send a direct message to your Airia bot
-3. Mention the bot with `@Airia Bot test message` in a channel
+2. Send a direct message to your AI Assistant
+3. Mention the bot with `@AI Assistant test message` in a channel
 
 *Advanced Features:*
 4. Start a thread in a channel, then click the three dots menu (⋮) and select "Summarize Thread"
-5. Use the lightning bolt (⚡) icon in the message compose box and select "Ask Airia"
+5. Use the lightning bolt (⚡) icon in the message compose box and select "Ask AI Assistant"
 6. In Slack Workflow Builder, create a new workflow and add the "Generate response" step
 7. Share a link from your configured domain to see link unfurling
 

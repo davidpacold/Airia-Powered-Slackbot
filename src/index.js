@@ -284,7 +284,7 @@ async function processSlashCommand(payload, env) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text: `Result from Airia:\n*${aiJson.result}*\nIs Backup Pipeline: ${
+        text: `Result from AI Assistant:\n*${aiJson.result}*\nIs Backup Pipeline: ${
           aiJson.isBackupPipeline ? 'Yes' : 'No'
         }`,
       }),
@@ -333,7 +333,7 @@ async function processDM(event, env) {
 
 /**
  * Processes @mentions in background
- *  1) Immediately post ephemeral “thinking” face
+ *  1) Immediately post ephemeral "thinking" face
  *  2) Then post final AI result
  */
 async function processMention(event, env) {
@@ -396,7 +396,7 @@ async function updateHomeTab(event, env) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: '*Welcome to the Airia Slackbot!* :wave:\n\nThis bot helps you interact with Airia\'s API effortlessly.',
+          text: '*Welcome to the AI Assistant!* :wave:\n\nThis bot helps you interact with AI services effortlessly.',
         },
       },
       {
@@ -406,7 +406,7 @@ async function updateHomeTab(event, env) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: '*Available Features:*\n\nHere’s how you can use the Airia Slackbot:',
+          text: '*Available Features:*\n\nHere's how you can use the AI Assistant:',
         },
       },
       {
@@ -423,7 +423,7 @@ async function updateHomeTab(event, env) {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: '*2. @Mention in a Channel:*\nMention the bot in a channel and ask a question.\n\n_Example:_ `@Ask Airia What is the weather today?`',
+          text: '*2. @Mention in a Channel:*\nMention the bot in a channel and ask a question.\n\n_Example:_ `@AI Assistant What is the weather today?`',
         },
       },
       {
@@ -444,7 +444,7 @@ async function updateHomeTab(event, env) {
         elements: [
           {
             type: 'mrkdwn',
-            text: ':gear: *Need help?* Contact your Airia administrator for support.',
+            text: ':gear: *Need help?* Contact your administrator for support.',
           },
         ],
       },
@@ -619,7 +619,7 @@ async function processAskAiriaShortcut(payload, env) {
           callback_id: 'ask_airia_modal',
           title: {
             type: 'plain_text',
-            text: 'Ask Airia',
+            text: 'Ask AI Assistant',
           },
           submit: {
             type: 'plain_text',
@@ -682,7 +682,7 @@ async function processLinkUnfurl(event, env) {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `*Link Preview from Airia*\n${link.url}`,
+                text: `*Link Preview from AI Assistant*\n${link.url}`,
               },
             },
             {
@@ -690,7 +690,7 @@ async function processLinkUnfurl(event, env) {
               elements: [
                 {
                   type: 'mrkdwn',
-                  text: 'Powered by Airia',
+                  text: 'Powered by AI Assistant',
                 },
               ],
             },
