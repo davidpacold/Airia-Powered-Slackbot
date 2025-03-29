@@ -54,15 +54,18 @@ This guide uses `npx wrangler` to run wrangler commands without requiring a glob
 # Check your wrangler version
 wrangler --version
 
-# Update to latest version if needed
-npm update -g wrangler
+# If you see "update available" message, update to latest v4.x version
+npm install -g wrangler@4
 ```
 
 #### If you have a local installation:
 
 ```bash
-# Update local wrangler in this project
-npm update wrangler
+# Check current wrangler version
+npx wrangler --version
+
+# If you see "update available" message, update to latest v4.x version 
+npm install --save-dev wrangler@4
 ```
 
 #### Continue with setup:
@@ -239,7 +242,7 @@ Test the Slack integration:
 
 This project supports multiple environments to separate development and production configurations.
 
-> **Note**: This project includes wrangler as a dev dependency in package.json, so you don't need to install it globally. The npm scripts (`npm run dev`, `npm run deploy`) will use the local version.
+> **Note**: This project includes wrangler as a dev dependency in package.json, so you don't need to install it globally. The npm scripts (`npm run dev`, `npm run deploy`) will use the local version. However, this project may have an older version - check with `npx wrangler --version` and if it shows "update available," run `npm install --save-dev wrangler@4` to update to the latest v4.x version.
 
 ### Local Development
 
@@ -318,13 +321,16 @@ Edit the `wrangler.toml` file to configure environments:
 AIRIA_API_URL = "YOUR_DEV_API_URL"
 ENVIRONMENT = "development"
 
+# Development-specific configuration
+[env.development]
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL" }
+
 # Production environment
 [env.production]
-vars = { 
-  AIRIA_API_URL = "YOUR_PRODUCTION_API_URL",
-  ENVIRONMENT = "production" 
-}
+vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL" }
 ```
+
+> **Note**: With wrangler 4.x and newer, inline tables must be on a single line
 
 Remember to set environment-specific secrets:
 ```
@@ -372,6 +378,34 @@ npm test
 ## Contributing
 
 [Insert contribution guidelines here]
+
+## Troubleshooting
+
+### Common Issues
+
+#### "Unterminated inline array" in wrangler.toml
+
+```
+✘ [ERROR] Unterminated inline array
+    /path/to/wrangler.toml:XX:XX:
+      XX │ vars = { 
+         ╵         ^
+```
+
+**Solution**: Wrangler 4.x requires inline tables to be on a single line. Update your environment variables section:
+
+```toml
+# Incorrect format (will cause error in wrangler 4.x)
+[env.development]
+vars = { 
+  ENVIRONMENT = "development",
+  AIRIA_API_URL = "YOUR_DEV_API_URL" 
+}
+
+# Correct format
+[env.development]
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL" }
+```
 
 ## Support
 
