@@ -169,22 +169,29 @@ open https://api.slack.com/apps
 # Or access https://api.slack.com/apps manually
 ```
 
-#### App Manifest Limitations
+#### Understanding the App Manifest
 
-The Slack App Manifest system has limitations with URL-dependent features. This is by design for security reasons:
+The provided Slack App manifest **only includes**:
+- Basic app information (name, description, color)
+- Bot user configuration
+- App Home tab settings
+- Required OAuth scopes/permissions
 
-1. **Security restrictions:** Slack prevents specifying URLs in the initial manifest to protect against malicious manifests that might send data to unauthorized endpoints.
+The manifest **deliberately excludes** any URL-dependent features due to Slack's security restrictions. Slack will not allow an app manifest to include request URLs during initial creation.
 
-2. **Verification requirement:** Slack requires that all URLs be verified as belonging to you. This verification happens after app creation when you manually enter the URLs.
+**Why this limitation exists:**
+- Security: Prevents malicious manifests from sending data to unauthorized endpoints
+- Verification: Slack requires that all URLs be verified during app setup
 
-3. **URL-dependent features that require manual setup:**
-   - Slash commands
-   - Interactive component request URLs
-   - Event subscription request URLs
-   - Workflow steps
-   - Message actions
+**Features you must configure manually after app creation:**
+- Event Subscriptions (with your Worker URL)
+- Slash Commands (with your Worker URL)
+- Interactivity settings (with your Worker URL)
+- Message Actions
+- Shortcuts
+- Workflow Steps
 
-According to [Slack's documentation](https://api.slack.com/reference/manifests), the manifest can only set up permissions, scopes, and basic app configuration.
+For more details, see [Slack's documentation on manifests](https://api.slack.com/reference/manifests).
 
 For a quick setup that still requires some manual steps:
 

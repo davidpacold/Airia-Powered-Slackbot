@@ -1,6 +1,4 @@
 {
-    "_documentation": "This manifest can only configure permissions and basic features. URL-dependent features (slash commands, interactive components, webhooks) must be configured manually after app creation due to Slack's security restrictions. See README.md for detailed post-creation setup instructions.",
-    
     "display_information": {
         "name": "AI Assistant",
         "description": "AI-powered assistant for Slack",
@@ -36,17 +34,6 @@
         }
     },
     "settings": {
-        "event_subscriptions": {
-            "bot_events": [
-                "app_home_opened",
-                "app_mention",
-                "message.im",
-                "link_shared"
-            ]
-        },
-        "interactivity": {
-            "is_enabled": true
-        },
         "org_deploy_enabled": false,
         "socket_mode_enabled": false
     }
