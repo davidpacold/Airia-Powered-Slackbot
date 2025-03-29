@@ -44,15 +44,35 @@ npm install
 
 ### 2. Set Up Cloudflare Worker
 
+#### If you don't have wrangler installed:
+
+This guide uses `npx wrangler` to run wrangler commands without requiring a global installation.
+
+#### If you already have wrangler installed globally:
+
 ```bash
-# Install Wrangler CLI if you don't have it
-npm install -g wrangler
+# Check your wrangler version
+wrangler --version
 
+# Update to latest version if needed
+npm update -g wrangler
+```
+
+#### If you have a local installation:
+
+```bash
+# Update local wrangler in this project
+npm update wrangler
+```
+
+#### Continue with setup:
+
+```bash
 # Log in to Cloudflare (will open browser for authentication)
-wrangler login
+npx wrangler login
 
-# Create a new Cloudflare Worker
-wrangler init
+# Create a new Cloudflare Worker (using npx)
+npx wrangler init
 ```
 
 When prompted during `wrangler init`:
@@ -91,29 +111,29 @@ sed -i '' 's/YOUR_PRODUCTION_API_URL/https:\/\/api.example.com\/airia/' wrangler
 
 ```bash
 # Development environment secrets
-wrangler secret put Airia_API_key
+npx wrangler secret put Airia_API_key
 # When prompted, enter your Airia API key
 
-wrangler secret put Slack_Signing_Secret
+npx wrangler secret put Slack_Signing_Secret
 # When prompted, enter your Slack Signing Secret
 
-wrangler secret put Slack_Bot_Token
+npx wrangler secret put Slack_Bot_Token
 # When prompted, enter your Slack Bot Token
 
 # Production environment secrets
-wrangler secret put Airia_API_key --env production
-wrangler secret put Slack_Signing_Secret --env production
-wrangler secret put Slack_Bot_Token --env production
+npx wrangler secret put Airia_API_key --env production
+npx wrangler secret put Slack_Signing_Secret --env production
+npx wrangler secret put Slack_Bot_Token --env production
 ```
 
 ### 6. Deploy Worker
 
 ```bash
 # Deploy to development environment
-wrangler deploy
+npx wrangler deploy
 
 # Deploy to production environment
-wrangler deploy --env production
+npx wrangler deploy --env production
 ```
 
 ### 7. Set Up Slack App
@@ -122,7 +142,7 @@ After deploying your worker, you'll need to configure a Slack app to connect to 
 
 ```bash
 # Get your Worker URL (note this for the next steps)
-wrangler whoami
+npx wrangler whoami
 echo "Your worker is deployed at: https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev"
 ```
 
@@ -181,10 +201,10 @@ If you haven't already added the Slack secrets, add them now:
 
 ```bash
 # Add/update the Slack secrets with values from the Slack app configuration
-wrangler secret put Slack_Signing_Secret
+npx wrangler secret put Slack_Signing_Secret
 # Enter the signing secret from Basic Information
 
-wrangler secret put Slack_Bot_Token
+npx wrangler secret put Slack_Bot_Token
 # Enter the Bot User OAuth Token from OAuth & Permissions
 ```
 
@@ -219,11 +239,17 @@ Test the Slack integration:
 
 This project supports multiple environments to separate development and production configurations.
 
+> **Note**: This project includes wrangler as a dev dependency in package.json, so you don't need to install it globally. The npm scripts (`npm run dev`, `npm run deploy`) will use the local version.
+
 ### Local Development
 
 Start a local development server:
-```
+```bash
+# This runs npx wrangler dev under the hood (defined in package.json)
 npm run dev
+
+# Or you can run it directly with npx
+npx wrangler dev
 ```
 
 This uses the default environment configured in `wrangler.toml` with:
@@ -251,12 +277,12 @@ To receive Slack events during local development, use Cloudflare Tunnel:
 ### Environment-specific Development
 
 To test with specific environment configurations:
-```
+```bash
 # Development environment
-wrangler dev --env development
+npx wrangler dev --env development
 
 # Production environment
-wrangler dev --env production
+npx wrangler dev --env production
 ```
 
 ### Deployment
