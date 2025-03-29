@@ -20,6 +20,7 @@
             "bot": [
                 "app_mentions:read",
                 "channels:history",
+                "channels:join",
                 "channels:read",
                 "chat:write",
                 "chat:write.public",

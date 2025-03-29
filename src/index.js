@@ -1223,14 +1223,21 @@ async function handleViewSubmission(payload, env) {
 
 /**
  * Handles link unfurling for domains specified in the app manifest
+ * 
+ * CUSTOMIZATION REQUIRED:
+ * 1. Change 'yourdomain.com' to your actual domain
+ * 2. Add logic to fetch and display metadata for your links
+ * 3. Update your Slack app configuration to include your domain 
+ *    in the "App unfurl domains" section
  */
 async function processLinkUnfurl(event, env) {
   console.log('[UNFURL] Processing link unfurl for links:', event.links);
   try {
-    // Example of unfurling links from yourdomain.com
+    // Example of unfurling links from your domain
     const unfurls = {};
     
     for (const link of event.links) {
+      // Change 'yourdomain.com' to your actual domain
       if (link.domain === 'yourdomain.com') {
         // You would typically fetch metadata about the link here
         // For demonstration, we'll create a simple unfurl

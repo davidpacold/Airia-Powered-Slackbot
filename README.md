@@ -19,9 +19,22 @@ This project creates a Slack bot that allows users to send queries to Airia's AP
 
 The bot is built on Cloudflare Workers for serverless deployment and reliable performance.
 
+### Expected Airia API Format
+
+This integration expects the Airia API to return responses in the following JSON format:
+
+```json
+{
+  "result": "The text response from Airia",
+  "isBackupPipeline": false
+}
+```
+
+If your API uses a different format, you'll need to modify the response handling in the source code.
+
 ### Slack App Manifest
 
-This repository includes a complete [Slack App Manifest](./slack-app-manifest.json) that you can use to quickly configure your Slack app with all the required permissions and features.
+This repository includes a [Slack App Manifest](./slack-app-manifest.json) that you can use to quickly configure your Slack app with the required permissions. Note that URL configurations must be added manually after app creation due to Slack's security requirements.
 
 ## Security Notes
 
@@ -33,15 +46,29 @@ This repository includes a complete [Slack App Manifest](./slack-app-manifest.js
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (v16 or newer)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) for Cloudflare Workers
-- A Cloudflare account
-- A Slack workspace with permission to add apps
-- Access to Airia API services
+For the deployment process, you'll need:
 
-## Setup (Command Line)
+- [Node.js](https://nodejs.org/) (v16 or newer) installed on your computer
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) for Cloudflare Workers (installed automatically by the setup process)
+- A Cloudflare account (free tier is sufficient)
+- A Slack workspace where you have permission to add apps
+- Access to Airia API services, including:
+  - Airia API endpoint URL
+  - Airia API key
 
-This guide will walk you through deploying the Airia Slackbot to Cloudflare Workers from your command line.
+For non-technical users: You may need to coordinate with your IT team to:
+1. Create a Cloudflare account if you don't have one
+2. Get access to your Airia API credentials
+3. Get Slack admin permissions if you don't already have them
+
+## Setup
+
+This guide will walk you through deploying the Airia Slackbot to Cloudflare Workers. There are two main parts to the setup:
+
+1. Deploying the Cloudflare Worker (the code that connects to Airia)
+2. Setting up the Slack App (the interface users will interact with)
+
+For non-technical users, we recommend asking a developer to help with the deployment. Once deployed, the bot is very easy to use.
 
 ### 1. Clone and Prepare Repository
 
@@ -110,14 +137,14 @@ sed -i '' 's/name = ".*"/name = "airia-slackbot"/' wrangler.toml
 
 ### 4. Configure Environment Variables
 
-Edit your API URLs in the `wrangler.toml` file:
+Edit your Airia API URLs in the `wrangler.toml` file:
 
 ```bash
 # For development environment
-sed -i '' 's/YOUR_DEV_API_URL/https:\/\/dev-api.example.com\/airia/' wrangler.toml
+sed -i '' 's/YOUR_DEV_AIRIA_API_URL/https:\/\/dev-api.example.com\/airia/' wrangler.toml
 
 # For production environment
-sed -i '' 's/YOUR_PRODUCTION_API_URL/https:\/\/api.example.com\/airia/' wrangler.toml
+sed -i '' 's/YOUR_PRODUCTION_AIRIA_API_URL/https:\/\/api.example.com\/airia/' wrangler.toml
 
 # Or edit manually in your text editor
 ```
@@ -287,6 +314,7 @@ In the Slack App settings:
    
    *Enhanced functionality (recommended):*
    - `channels:history` - Allows the bot to read channel messages
+   - `channels:join` - Allows the bot to join public channels
    - `channels:read` - Allows the bot to see channel information 
    - `chat:write.public` - Allows the bot to write in public channels it's not a member of
    - `commands` - Allows the bot to use slash commands
@@ -389,6 +417,8 @@ Test all Slack integration features:
 > **Important**: For features that access channel messages (like thread summarization), 
 > you must add the bot to those channels first. For private channels, manually
 > add the bot using `/invite @AI Assistant`.
+>
+> If you see errors like `[THREAD_SUMMARY] Channel join attempt: Failed: missing_scope` in your logs, it means your bot needs to be reinstalled with additional permissions. In particular, the "Summarize Thread" feature requires the `channels:join` scope to work properly. Make sure you've included all the recommended scopes when creating your app, then reinstall it to your workspace.
 
 ## Development and Production Environments
 
@@ -526,11 +556,37 @@ npm test
 
 ## License
 
-[Insert your license information here]
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Contributing
 
-[Insert contribution guidelines here]
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Customizing for Different API Formats
+
+If your Airia API (or any other AI API you're using) returns data in a format different from what's expected, you'll need to modify the response handling logic in the source code.
+
+The code currently expects JSON responses in this format:
+```json
+{
+  "result": "The text response from the AI",
+  "isBackupPipeline": false
+}
+```
+
+To adapt to a different API format:
+
+1. Look for the AI API fetch calls in the code (in functions like `processSlashCommand`, `processDM`, etc.)
+2. Modify the response parsing and how the data is displayed to users
+
+Key files to edit:
+- `src/index.js`: The main worker file that handles all API interactions
 
 ## Troubleshooting
 
@@ -552,13 +608,28 @@ npm test
 [env.development]
 vars = { 
   ENVIRONMENT = "development",
-  AIRIA_API_URL = "YOUR_DEV_API_URL" 
+  AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL" 
 }
 
 # Correct format
 [env.development]
-vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL" }
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL" }
 ```
+
+#### Error when making API requests to Airia
+
+If you see errors in the logs about API responses not being parsed correctly, check:
+1. That your API endpoint is correctly set in wrangler.toml
+2. That your API key is correctly set as a secret
+3. That the API response format matches what the code expects (see "Customizing for Different API Formats" above)
+
+#### Missing permissions errors in Slack
+
+If you see errors related to permissions like `missing_scope` in your logs:
+1. Go to your Slack App configuration > OAuth & Permissions
+2. Make sure all required scopes are added (especially `channels:join` for thread summarization)
+3. Reinstall the app to your workspace to apply the new permissions
+4. For private channels, manually invite the bot with `/invite @AI Assistant`
 
 ## Support
 
