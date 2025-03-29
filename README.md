@@ -124,6 +124,25 @@ sed -i '' 's/YOUR_PRODUCTION_API_URL/https:\/\/api.example.com\/airia/' wrangler
 
 ### 5. Add Secrets
 
+#### Where to Find Each Secret
+
+- **Airia_API_key**: 
+  - This is your API key for the Airia service
+  - Obtain this from your Airia administrator or dashboard
+  - If using another AI service, use their API key
+
+- **Slack_Signing_Secret**:
+  - Located in your Slack App settings under "Basic Information" 
+  - Look for "Signing Secret" in the "App Credentials" section
+  - ![Signing Secret Location](https://api.slack.com/img/api/app_credentials.png)
+
+- **Slack_Bot_Token**:
+  - Located in your Slack App settings under "OAuth & Permissions"
+  - Look for "Bot User OAuth Token" that starts with `xoxb-`
+  - You must install the app to your workspace first to get this token
+
+#### Add Secrets to Your Worker
+
 ```bash
 # Development environment secrets
 npx wrangler secret put Airia_API_key
@@ -140,6 +159,8 @@ npx wrangler secret put Airia_API_key --env production
 npx wrangler secret put Slack_Signing_Secret --env production
 npx wrangler secret put Slack_Bot_Token --env production
 ```
+
+> **Important**: The signature verification in the code will be skipped if `Slack_Signing_Secret` isn't set yet. This helps during initial setup/verification of your Slack endpoints. Once you have your app fully configured, make sure to set this secret for secure operation.
 
 ### 6. Deploy Worker
 
@@ -257,10 +278,27 @@ In the Slack App settings:
 
 **OAuth & Permissions:**
 1. Under "Scopes", add these Bot Token Scopes:
-   - `app_mentions:read`
-   - `chat:write`
-   - `im:history`
-   - `im:write`
+   
+   *Basic functionality:*
+   - `app_mentions:read` - Allows the bot to see when it's mentioned
+   - `chat:write` - Allows the bot to send messages
+   - `im:history` - Allows the bot to read direct messages
+   - `im:write` - Allows the bot to send direct messages
+   
+   *Enhanced functionality (recommended):*
+   - `channels:history` - Allows the bot to read channel messages
+   - `channels:read` - Allows the bot to see channel information 
+   - `chat:write.public` - Allows the bot to write in public channels it's not a member of
+   - `commands` - Allows the bot to use slash commands
+   - `groups:history` - Allows the bot to read private channel messages
+   - `groups:read` - Allows the bot to see private channel information
+   - `links:read` - Allows the bot to unfurl links
+   - `mpim:history` - Allows the bot to read group DM messages
+   - `mpim:read` - Allows the bot to see group DM information
+   - `mpim:write` - Allows the bot to send messages in group DMs
+   - `reactions:read` - Allows the bot to see reactions
+   - `users:read` - Allows the bot to see user information
+   - `workflow.steps:execute` - Allows the bot to run workflow steps
 2. Under "OAuth Tokens for Your Workspace", click "Install to Workspace"
 3. Note your "Bot User OAuth Token" (needed for the `Slack_Bot_Token` you configured earlier)
 
@@ -339,10 +377,18 @@ Test all Slack integration features:
 3. Mention the bot with `@AI Assistant test message` in a channel
 
 *Advanced Features:*
-4. Start a thread in a channel, then click the three dots menu (⋮) and select "Summarize Thread"
+4. Click the three dots menu (⋮) on any message and select "Summarize" to:
+   - Summarize a thread (if the message has replies)
+   - Summarize a single message (if it's not in a thread)
+   - Summarize recent conversation (for context)
+   *(Note: Make sure to add the bot to any channels where you want to use this feature)*
 5. Use the lightning bolt (⚡) icon in the message compose box and select "Ask AI Assistant"
 6. In Slack Workflow Builder, create a new workflow and add the "Generate response" step
 7. Share a link from your configured domain to see link unfurling
+
+> **Important**: For features that access channel messages (like thread summarization), 
+> you must add the bot to those channels first. For private channels, manually
+> add the bot using `/invite @AI Assistant`.
 
 ## Development and Production Environments
 
