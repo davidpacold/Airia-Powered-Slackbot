@@ -27,34 +27,171 @@ The bot is built on Cloudflare Workers for serverless deployment and reliable pe
 - A Slack workspace with permission to add apps
 - Access to Airia API services
 
-## Setup
+## Setup (Command Line)
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/yourusername/Airia-Powered-Slackbot.git
-   cd Airia-Powered-Slackbot
-   ```
+This guide will walk you through deploying the Airia Slackbot to Cloudflare Workers from your command line.
 
-2. Install dependencies:
-   ```
-   npm install
-   ```
+### 1. Clone and Prepare Repository
 
-3. Configure your secrets (NEVER commit these to the repository):
-   ```
-   wrangler secret put Airia_API_key
-   wrangler secret put Slack_Signing_Secret
-   wrangler secret put Slack_Bot_Token
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/Airia-Powered-Slackbot.git
+cd Airia-Powered-Slackbot
 
-4. Update the `AIRIA_API_URL` in `wrangler.toml` with your Airia API endpoint
+# Install dependencies
+npm install
+```
 
-5. Create your Slack app in the [Slack API portal](https://api.slack.com/apps):
-   - Enable slash commands
-   - Enable bot token scopes for messaging
-   - Add OAuth permissions for `chat:write`, `im:history`, and `app_mentions:read`
-   - Configure the bot's home tab
-   - Set up event subscriptions for messages and app_home_opened events
+### 2. Set Up Cloudflare Worker
+
+```bash
+# Install Wrangler CLI if you don't have it
+npm install -g wrangler
+
+# Log in to Cloudflare (will open browser for authentication)
+wrangler login
+
+# Create a new Cloudflare Worker
+wrangler init
+```
+
+When prompted during `wrangler init`:
+- Select "Deploy an existing application" when asked about the Worker type
+- Select "No" for starting with a starter template
+- Select "Yes" for typechecking with TypeScript
+- Select "No" for using git for version control (since you already cloned the repo)
+
+### 3. Configure Worker Name
+
+Edit the `wrangler.toml` file:
+
+```bash
+# On macOS/Linux
+sed -i '' 's/name = ".*"/name = "airia-slackbot"/' wrangler.toml
+
+# Or edit manually - change the name line to:
+# name = "airia-slackbot"
+```
+
+### 4. Configure Environment Variables
+
+Edit your API URLs in the `wrangler.toml` file:
+
+```bash
+# For development environment
+sed -i '' 's/YOUR_DEV_API_URL/https:\/\/dev-api.example.com\/airia/' wrangler.toml
+
+# For production environment
+sed -i '' 's/YOUR_PRODUCTION_API_URL/https:\/\/api.example.com\/airia/' wrangler.toml
+
+# Or edit manually in your text editor
+```
+
+### 5. Add Secrets
+
+```bash
+# Development environment secrets
+wrangler secret put Airia_API_key
+# When prompted, enter your Airia API key
+
+wrangler secret put Slack_Signing_Secret
+# When prompted, enter your Slack Signing Secret
+
+wrangler secret put Slack_Bot_Token
+# When prompted, enter your Slack Bot Token
+
+# Production environment secrets
+wrangler secret put Airia_API_key --env production
+wrangler secret put Slack_Signing_Secret --env production
+wrangler secret put Slack_Bot_Token --env production
+```
+
+### 6. Deploy Worker
+
+```bash
+# Deploy to development environment
+wrangler deploy
+
+# Deploy to production environment
+wrangler deploy --env production
+```
+
+### 7. Set Up Slack App
+
+After deploying your worker, you'll need to configure a Slack app to connect to it:
+
+```bash
+# Get your Worker URL (note this for the next steps)
+wrangler whoami
+echo "Your worker is deployed at: https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev"
+```
+
+#### 7.1 Create Slack App
+
+```bash
+# Open Slack API portal (will open in browser)
+open https://api.slack.com/apps
+# Or access https://api.slack.com/apps manually
+```
+
+In the browser:
+1. Click "Create New App"
+2. Choose "From scratch"
+3. Enter "Airia Bot" for name, select your workspace, and click "Create App"
+
+#### 7.2 Configure App Features
+
+In the Slack App settings:
+
+**Basic Information:**
+- Note your "Signing Secret" (needed for the `Slack_Signing_Secret` you configured earlier)
+
+**App Home:**
+- Under "Show Tabs", enable "Home Tab"
+- Enable "Allow users to send Slash commands and messages from the messages tab"
+
+**Slash Commands:**
+1. Click "Create New Command"
+2. Command: `/ask-airia`
+3. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+4. Short Description: "Ask a question to Airia"
+5. Click "Save"
+
+**OAuth & Permissions:**
+1. Under "Scopes", add these Bot Token Scopes:
+   - `app_mentions:read`
+   - `chat:write`
+   - `im:history`
+   - `im:write`
+2. Under "OAuth Tokens for Your Workspace", click "Install to Workspace"
+3. Note your "Bot User OAuth Token" (needed for the `Slack_Bot_Token` you configured earlier)
+
+**Event Subscriptions:**
+1. Enable Events: Toggle "On"
+2. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+3. Under "Subscribe to bot events", add:
+   - `app_home_opened`
+   - `app_mention`
+   - `message.im`
+4. Click "Save Changes"
+
+#### 7.3 Verify Configuration
+
+If you haven't already added the Slack secrets, add them now:
+
+```bash
+# Add/update the Slack secrets with values from the Slack app configuration
+wrangler secret put Slack_Signing_Secret
+# Enter the signing secret from Basic Information
+
+wrangler secret put Slack_Bot_Token
+# Enter the Bot User OAuth Token from OAuth & Permissions
+```
+
+Now test the Slack integration:
+1. In Slack, type `/ask-airia test message` in any channel
+2. Send a direct message to your Airia bot
+3. Mention the bot with `@Airia Bot test message` in a channel
 
 ## Development and Production Environments
 
