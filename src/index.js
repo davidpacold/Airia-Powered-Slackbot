@@ -1,21 +1,49 @@
+/**
+ * Airia-Powered Slackbot
+ * 
+ * A Cloudflare Worker that connects Slack to the Airia API, enabling
+ * teams to interact with Airia's capabilities directly from Slack.
+ * 
+ * This worker handles:
+ * - Slack slash commands (/ask-airia)
+ * - Slack Direct Messages to the bot
+ * - Mentions of the bot in channels
+ * - Slack home tab app configuration
+ * 
+ * Security features:
+ * - Verifies Slack request signatures
+ * - Uses environment variables for all secrets
+ * - Configurable environment-based logging
+ * - Production/development environment separation
+ */
+
 import crypto from 'crypto';
 
 /**
  * Partial key logging to avoid exposing entire secrets in logs
+ * Only for development environments - remove in production
  */
 function partialKey(key) {
   if (!key) return 'undefined';
-  return key.slice(0, 6) + '...'; // e.g. "abc123..."
+  return key.slice(0, 3) + '...'; // Show only first 3 chars
 }
 
 /**
- * Optional logger to confirm env vars are set
+ * Logger to confirm env vars are set
+ * SECURITY NOTE: For development only - should be disabled in production
+ * as it could leak partial secrets to logs
  */
 function logEnvValues(env) {
-  console.log('[ENV] AIRIA_API_URL:', env.AIRIA_API_URL || 'undefined');
-  console.log('[ENV] Airia_API_key (partial):', partialKey(env.Airia_API_key));
-  console.log('[ENV] Slack_Signing_Secret (partial):', partialKey(env.Slack_Signing_Secret));
-  console.log('[ENV] Slack_Bot_Token (partial):', partialKey(env.Slack_Bot_Token));
+  // Don't log in production
+  if (env.ENVIRONMENT === 'production') {
+    console.log('[ENV] Environment: production (skipping detailed logs)');
+    return;
+  }
+  
+  console.log('[ENV] AIRIA_API_URL is set:', !!env.AIRIA_API_URL);
+  console.log('[ENV] Airia_API_key is set:', !!env.Airia_API_key);
+  console.log('[ENV] Slack_Signing_Secret is set:', !!env.Slack_Signing_Secret);
+  console.log('[ENV] Slack_Bot_Token is set:', !!env.Slack_Bot_Token);
 }
 
 /**
@@ -25,18 +53,27 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // If you have a quick debugging route
-    if (url.pathname === '/test') {
+    // Test route - only enabled in development environments
+    if (url.pathname === '/test' && env.ENVIRONMENT !== 'production') {
       console.log('[TEST] Received /test request');
-      logEnvValues(env);
-
-      // Return quick 200, do optional background tasks
-      const ack = new Response(JSON.stringify({ message: 'Test route ack' }), {
+      
+      // Check environment but don't log sensitive details
+      console.log('[TEST] Environment:', env.ENVIRONMENT || 'not set');
+      
+      // Return basic health check response
+      return new Response(JSON.stringify({ 
+        status: 'ok',
+        environment: env.ENVIRONMENT || 'development'
+      }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
-      // ctx.waitUntil(processTestRoute(request, env)); // If desired
-      return ack;
+    }
+    
+    // Block test route in production
+    if (url.pathname === '/test' && env.ENVIRONMENT === 'production') {
+      console.warn('[SECURITY] Test route accessed in production');
+      return new Response('Not found', { status: 404 });
     }
 
     if (url.pathname === '/slack') {
@@ -154,6 +191,18 @@ export default {
     console.warn('[WORKER] No matching route:', url.pathname);
     return new Response('Not found', { status: 404 });
   },
+  
+  /**
+   * Add any additional Worker event handlers here:
+   * 
+   * scheduled: (event, env, ctx) => {
+   *   // Handle scheduled events (cron jobs)
+   * },
+   * 
+   * queue: (batch, env, ctx) => {
+   *   // Process queued messages
+   * },
+   */
 };
 
 /**
@@ -354,7 +403,7 @@ async function updateHomeTab(event, env) {
         elements: [
           {
             type: 'mrkdwn',
-            text: ':gear: *Need help?* Contact support@example.com.',
+            text: ':gear: *Need help?* Contact your Airia administrator for support.',
           },
         ],
       },
@@ -408,9 +457,7 @@ async function postEphemeralMessage(env, { channel, user, text }) {
 }
 
 /**
- * If you want a test route background logic
+ * Removed test route background logic for security
+ * Any debugging functionality should be properly secured
+ * and disabled in production environments
  */
-async function processTestRoute(request, env) {
-  console.log('[TEST] processTestRoute in background...');
-  // e.g. parse body, call Airia, etc.
-}

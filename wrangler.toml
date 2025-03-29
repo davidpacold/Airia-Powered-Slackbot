@@ -22,10 +22,27 @@ enabled = true
 # - https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 # Note: Use secrets to store sensitive data.
 # - https://developers.cloudflare.com/workers/configuration/secrets/
-# [vars]
-# MY_VARIABLE = "production_value"
 [vars]
 AIRIA_API_URL = "YOUR_AGENT_API_URL"
+ENVIRONMENT = "development"
+
+# ENVIRONMENT CONFIGURATIONS
+# Separate configurations for development and production
+# See: https://developers.cloudflare.com/workers/configuration/environments/
+
+# Development-specific configuration (default)
+[env.development]
+vars = { 
+  ENVIRONMENT = "development",
+  AIRIA_API_URL = "YOUR_DEV_API_URL" 
+}
+
+# Production configuration
+[env.production]
+vars = { 
+  ENVIRONMENT = "production",
+  AIRIA_API_URL = "YOUR_PRODUCTION_API_URL" 
+}
 
 # Bind the Workers AI model catalog. Run machine learning models, powered by serverless GPUs, on Cloudflare’s global network
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#workers-ai
