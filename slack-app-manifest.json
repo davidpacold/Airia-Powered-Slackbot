@@ -1,0 +1,90 @@
+{
+    "display_information": {
+        "name": "Airia - David Pacold Tenant",
+        "description": "Testing Airia App in my sandbox",
+        "background_color": "#000000",
+        "long_description": "Airia helps teams with AI-powered assistance directly in Slack"
+    },
+    "features": {
+        "app_home": {
+            "home_tab_enabled": true,
+            "messages_tab_enabled": true,
+            "messages_tab_read_only_enabled": false
+        },
+        "bot_user": {
+            "display_name": "Airia - David Pacold Tenant",
+            "always_online": true
+        },
+        "slash_commands": [
+            {
+                "command": "/ask-airia",
+                "url": "https://slack-bot.david-pacold.workers.dev/slack",
+                "description": "Ask Airia a question",
+                "usage_hint": "[your question]",
+                "should_escape": false
+            }
+        ],
+        "interactive_components": {
+            "message_actions": [
+                {
+                    "name": "Summarize Thread",
+                    "description": "Get Airia to summarize this thread"
+                }
+            ]
+        },
+        "shortcuts": [
+            {
+                "name": "Ask Airia",
+                "type": "global",
+                "callback_id": "ask_airia_shortcut",
+                "description": "Ask Airia a question from anywhere"
+            }
+        ],
+        "unfurl_domains": ["yourdomain.com"],
+        "workflow_steps": [
+            {
+                "name": "Generate response",
+                "callback_id": "generate_response"
+            }
+        ]
+    },
+    "oauth_config": {
+        "scopes": {
+            "bot": [
+                "app_mentions:read",
+                "channels:history",
+                "channels:read",
+                "chat:write",
+                "chat:write.public",
+                "commands",
+                "groups:read",
+                "im:history",
+                "im:write",
+                "mpim:history",
+                "mpim:read",
+                "mpim:write",
+                "users:read",
+                "chat:write.customize",
+                "workflow.steps:execute"
+            ]
+        }
+    },
+    "settings": {
+        "event_subscriptions": {
+            "request_url": "https://slack-bot.david-pacold.workers.dev/slack",
+            "bot_events": [
+                "app_home_opened",
+                "app_mention",
+                "message.im"
+            ]
+        },
+        "interactivity": {
+            "is_enabled": true,
+            "request_url": "https://slack-bot.david-pacold.workers.dev/slack"
+        },
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false,
+        "user_token_rotation_enabled": true
+    }
+}

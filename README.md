@@ -4,12 +4,24 @@ A Cloudflare Worker that connects Slack to the Airia API, enabling your team to 
 
 ## Overview
 
-This project creates a Slack bot that allows users to send queries to Airia's API through:
+This project creates a Slack bot that allows users to send queries to Airia's API through multiple interaction methods:
+
+### Basic Interactions
 - Slash commands (`/ask-airia`)
 - Direct messages 
 - @mentions in channels
 
+### Advanced Features
+- Message actions (summarize threads)
+- Global shortcuts (ask from anywhere)
+- Workflow steps (generate responses in workflows)
+- Link unfurling (rich previews for your domains)
+
 The bot is built on Cloudflare Workers for serverless deployment and reliable performance.
+
+### Slack App Manifest
+
+This repository includes a complete [Slack App Manifest](./slack-app-manifest.json) that you can use to quickly configure your Slack app with all the required permissions and features.
 
 ## Security Notes
 
@@ -157,6 +169,22 @@ open https://api.slack.com/apps
 # Or access https://api.slack.com/apps manually
 ```
 
+#### Quick Setup with App Manifest
+
+For a faster setup, you can use the provided Slack App Manifest:
+
+1. Visit [https://api.slack.com/apps](https://api.slack.com/apps)
+2. Click "Create New App"
+3. Select "From an app manifest"
+4. Choose your workspace
+5. Copy and paste the contents of [slack-app-manifest.json](./slack-app-manifest.json)
+6. Update all URLs to match your Cloudflare Worker URL
+7. Click "Create"
+
+#### Manual Setup
+
+If you prefer to configure manually:
+
 In the browser:
 1. Click "Create New App"
 2. Choose "From scratch"
@@ -196,7 +224,30 @@ In the Slack App settings:
    - `app_home_opened`
    - `app_mention`
    - `message.im`
-4. Click "Save Changes"
+   - `link_shared` (for link unfurling)
+4. Under "App unfurl domains", add your domain (e.g., yourdomain.com)
+5. Click "Save Changes"
+
+**Interactivity & Shortcuts:**
+1. Enable Interactivity: Toggle "On"
+2. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+3. Under "Shortcuts", click "Create New Shortcut"
+4. Create a Global shortcut:
+   - Name: "Ask Airia"
+   - Short Description: "Ask Airia a question from anywhere"
+   - Callback ID: `ask_airia_shortcut`
+5. Under "Message Menus", click "Create New Message Action"
+   - Name: "Summarize Thread"
+   - Description: "Get Airia to summarize this thread"
+   - Callback ID: `summarize_thread`
+6. Click "Save Changes"
+
+**Workflow Steps:**
+1. Go to "Workflow Steps" in sidebar
+2. Click "Add Step"
+3. Name: "Generate response"
+4. Callback ID: `generate_response`
+5. Click "Save"
 
 #### 7.3 Verify Configuration
 
@@ -233,10 +284,18 @@ curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
 
 **Slack Integration Testing:**
 
-Test the Slack integration:
+Test all Slack integration features:
+
+*Basic Features:*
 1. In Slack, type `/ask-airia test message` in any channel
 2. Send a direct message to your Airia bot
 3. Mention the bot with `@Airia Bot test message` in a channel
+
+*Advanced Features:*
+4. Start a thread in a channel, then click the three dots menu (⋮) and select "Summarize Thread"
+5. Use the lightning bolt (⚡) icon in the message compose box and select "Ask Airia"
+6. In Slack Workflow Builder, create a new workflow and add the "Generate response" step
+7. Share a link from your configured domain to see link unfurling
 
 ## Development and Production Environments
 
@@ -361,6 +420,7 @@ npm test
 - `src/index.js` - Main worker code that handles Slack requests and communicates with Airia
 - `wrangler.toml` - Cloudflare Worker configuration
 - `test/` - Test files for the worker
+- `slack-app-manifest.json` - Complete Slack app configuration manifest for easy setup
 
 ## Security Best Practices
 

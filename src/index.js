@@ -119,6 +119,15 @@ export default {
       } else if (contentType.includes('application/x-www-form-urlencoded')) {
         const params = new URLSearchParams(rawBody);
         payload = Object.fromEntries(params.entries());
+        
+        // For payloads containing JSON strings (like interactive components)
+        if (payload.payload) {
+          try {
+            payload = JSON.parse(payload.payload);
+          } catch (err) {
+            console.error('[SLACK] Error parsing payload JSON:', err);
+          }
+        }
       } else {
         console.error('[SLACK] Invalid content type:', contentType);
         return new Response('Invalid request format', { status: 400 });
@@ -143,6 +152,38 @@ export default {
         return ack;
       }
 
+      // Interactive components (message actions, shortcuts, etc.)
+      if (payload.type === 'message_action' || payload.type === 'block_actions' || 
+          payload.type === 'shortcut' || payload.type === 'workflow_step') {
+        console.log('[INTERACTIVE] Interactive component triggered:', payload.type);
+        const ack = new Response('OK', { status: 200 });
+        
+        // Handle message action: "Summarize Thread"
+        if (payload.type === 'message_action' && payload.callback_id === 'summarize_thread') {
+          ctx.waitUntil(processThreadSummary(payload, env));
+        } 
+        // Handle global shortcut: "Ask Airia"
+        else if (payload.type === 'shortcut' && payload.callback_id === 'ask_airia_shortcut') {
+          ctx.waitUntil(processAskAiriaShortcut(payload, env));
+        } 
+        // Handle workflow step: "Generate response"
+        else if (payload.type === 'workflow_step' && payload.callback_id === 'generate_response') {
+          ctx.waitUntil(processWorkflowStep(payload, env));
+        } else {
+          console.log('[INTERACTIVE] Unhandled interactive component:', payload);
+        }
+        
+        return ack;
+      }
+
+      // Link unfurling
+      if (payload.type === 'event_callback' && payload.event && payload.event.type === 'link_shared') {
+        console.log('[UNFURL] Link shared event:', payload.event);
+        const ack = new Response('OK', { status: 200 });
+        ctx.waitUntil(processLinkUnfurl(payload.event, env));
+        return ack;
+      }
+      
       // Event callback
       if (payload.type === 'event_callback') {
         const slackEvent = payload.event;
@@ -426,16 +467,37 @@ async function updateHomeTab(event, env) {
 
 /**
  * Post a message to Slack in background tasks
+ * @param {Object} env - Environment variables
+ * @param {string} channel - Slack channel ID
+ * @param {string} text - Message text
+ * @param {string} [thread_ts] - Optional thread timestamp to reply to a thread
+ * @param {Object} [blocks] - Optional blocks for rich formatting
  */
-async function postSlackMessage(env, channel, text) {
-  console.log('[SLACK POST] channel:', channel, ' text:', text);
+async function postSlackMessage(env, channel, text, thread_ts = null, blocks = null) {
+  console.log('[SLACK POST] channel:', channel, ' text:', text, thread_ts ? ' (in thread)' : '');
+  
+  const message = { 
+    channel, 
+    text 
+  };
+  
+  // Add thread_ts if provided (for thread replies)
+  if (thread_ts) {
+    message.thread_ts = thread_ts;
+  }
+  
+  // Add blocks if provided (for rich formatting)
+  if (blocks) {
+    message.blocks = blocks;
+  }
+  
   await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.Slack_Bot_Token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ channel, text }),
+    body: JSON.stringify(message),
   });
 }
 
@@ -454,6 +516,320 @@ async function postEphemeralMessage(env, { channel, user, text }) {
   });
   const json = await response.json();
   console.log('[SLACK EPHEMERAL] postEphemeral response:', json);
+}
+
+/**
+ * Handles "Summarize Thread" message action
+ * This allows users to ask Airia to summarize a thread of messages
+ */
+async function processThreadSummary(payload, env) {
+  console.log('[THREAD_SUMMARY] Processing thread summary request');
+  try {
+    const { channel, message_ts } = payload.message;
+    
+    // Step 1: Retrieve the conversation history to get the thread
+    const threadResponse = await fetch(`https://slack.com/api/conversations.replies`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.Slack_Bot_Token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel: channel.id,
+        ts: message_ts,
+      }),
+    });
+    
+    const threadData = await threadResponse.json();
+    if (!threadData.ok) {
+      console.error('[THREAD_SUMMARY] Failed to retrieve thread:', threadData.error);
+      await postEphemeralMessage(env, {
+        channel: channel.id,
+        user: payload.user.id,
+        text: `Error retrieving thread: ${threadData.error}`,
+      });
+      return;
+    }
+    
+    // Step 2: Format the thread messages for the AI
+    const threadText = threadData.messages
+      .map(msg => `${msg.user || 'User'}: ${msg.text}`)
+      .join('\n');
+    
+    // Step 3: Send to Airia API with a thread summarization prompt
+    const aiRes = await fetch(env.AIRIA_API_URL, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': env.Airia_API_key,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        userInput: `Summarize this conversation thread: ${threadText}`, 
+        asyncOutput: false
+      }),
+    });
+    
+    if (!aiRes.ok) {
+      console.error('[THREAD_SUMMARY] Airia API error:', aiRes.status);
+      await postEphemeralMessage(env, {
+        channel: channel.id,
+        user: payload.user.id,
+        text: `Error summarizing thread: API error ${aiRes.status}`,
+      });
+      return;
+    }
+
+    // Step 4: Post the summary as a reply to the thread
+    const aiJson = JSON.parse(await aiRes.text());
+    await postSlackMessage(env, channel.id, `*Thread Summary:*\n${aiJson.result}`, message_ts);
+    
+    console.log('[THREAD_SUMMARY] Posted thread summary successfully');
+  } catch (err) {
+    console.error('[THREAD_SUMMARY] Error:', err);
+    try {
+      await postEphemeralMessage(env, {
+        channel: payload.channel.id,
+        user: payload.user.id,
+        text: `Error processing thread summary: ${err.message}`,
+      });
+    } catch (postErr) {
+      console.error('[THREAD_SUMMARY] Failed to send error message:', postErr);
+    }
+  }
+}
+
+/**
+ * Handles "Ask Airia" global shortcut
+ * Opens a modal dialog for users to ask Airia a question from anywhere
+ */
+async function processAskAiriaShortcut(payload, env) {
+  console.log('[SHORTCUT] Processing Ask Airia shortcut');
+  try {
+    // Open a modal for the user to input their question
+    const modalResponse = await fetch('https://slack.com/api/views.open', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.Slack_Bot_Token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        trigger_id: payload.trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'ask_airia_modal',
+          title: {
+            type: 'plain_text',
+            text: 'Ask Airia',
+          },
+          submit: {
+            type: 'plain_text',
+            text: 'Ask',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Cancel',
+          },
+          blocks: [
+            {
+              type: 'input',
+              block_id: 'question_block',
+              element: {
+                type: 'plain_text_input',
+                action_id: 'question',
+                multiline: true,
+                placeholder: {
+                  type: 'plain_text',
+                  text: 'What would you like to ask?',
+                },
+              },
+              label: {
+                type: 'plain_text',
+                text: 'Question',
+              },
+            },
+          ],
+        },
+      }),
+    });
+
+    const modalData = await modalResponse.json();
+    if (!modalData.ok) {
+      console.error('[SHORTCUT] Failed to open modal:', modalData.error);
+    } else {
+      console.log('[SHORTCUT] Modal opened successfully');
+    }
+  } catch (err) {
+    console.error('[SHORTCUT] Error processing shortcut:', err);
+  }
+}
+
+/**
+ * Handles link unfurling for domains specified in the app manifest
+ */
+async function processLinkUnfurl(event, env) {
+  console.log('[UNFURL] Processing link unfurl for links:', event.links);
+  try {
+    // Example of unfurling links from yourdomain.com
+    const unfurls = {};
+    
+    for (const link of event.links) {
+      if (link.domain === 'yourdomain.com') {
+        // You would typically fetch metadata about the link here
+        // For demonstration, we'll create a simple unfurl
+        unfurls[link.url] = {
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Link Preview from Airia*\n${link.url}`,
+              },
+            },
+            {
+              type: 'context',
+              elements: [
+                {
+                  type: 'mrkdwn',
+                  text: 'Powered by Airia',
+                },
+              ],
+            },
+          ],
+        };
+      }
+    }
+    
+    if (Object.keys(unfurls).length > 0) {
+      const unfurlResponse = await fetch('https://slack.com/api/chat.unfurl', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.Slack_Bot_Token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: event.channel,
+          ts: event.message_ts,
+          unfurls,
+        }),
+      });
+      
+      const unfurlData = await unfurlResponse.json();
+      if (!unfurlData.ok) {
+        console.error('[UNFURL] Failed to unfurl links:', unfurlData.error);
+      } else {
+        console.log('[UNFURL] Links unfurled successfully');
+      }
+    }
+  } catch (err) {
+    console.error('[UNFURL] Error processing link unfurl:', err);
+  }
+}
+
+/**
+ * Handles the "Generate response" workflow step
+ */
+async function processWorkflowStep(payload, env) {
+  console.log('[WORKFLOW] Processing workflow step:', payload.callback_id);
+  
+  try {
+    if (payload.type === 'workflow_step_edit') {
+      // Step 1: Open a configuration modal when user adds this step to a workflow
+      await fetch('https://slack.com/api/workflows.updateStep', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.Slack_Bot_Token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow_step_edit_id: payload.workflow_step.workflow_step_edit_id,
+          inputs: {
+            prompt: {
+              value: "{{workflow_step_input}}",
+              skip_variable_replacement: true,
+            }
+          },
+          outputs: [
+            {
+              name: "response",
+              type: "text",
+              label: "AI Response"
+            }
+          ]
+        })
+      });
+      console.log('[WORKFLOW] Configuration modal opened');
+    }
+    else if (payload.type === 'workflow_step_execute') {
+      // Step 2: Execute the workflow step when triggered in a workflow
+      const inputs = payload.workflow_step.inputs;
+      const prompt = inputs.prompt.value;
+      
+      // Call Airia API with the input
+      const aiRes = await fetch(env.AIRIA_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': env.Airia_API_key,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userInput: prompt, asyncOutput: false }),
+      });
+      
+      if (!aiRes.ok) {
+        console.error('[WORKFLOW] Airia API error:', aiRes.status);
+        await fetch('https://slack.com/api/workflows.stepFailed', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.Slack_Bot_Token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            workflow_step_execute_id: payload.workflow_step.workflow_step_execute_id,
+            error: {
+              message: `Airia API error: ${aiRes.status}`
+            }
+          })
+        });
+        return;
+      }
+      
+      // Parse response and complete the workflow step
+      const aiJson = JSON.parse(await aiRes.text());
+      await fetch('https://slack.com/api/workflows.stepCompleted', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.Slack_Bot_Token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow_step_execute_id: payload.workflow_step.workflow_step_execute_id,
+          outputs: {
+            response: aiJson.result
+          }
+        })
+      });
+      console.log('[WORKFLOW] Workflow step completed successfully');
+    }
+  } catch (err) {
+    console.error('[WORKFLOW] Error processing workflow step:', err);
+    // Notify Slack that the step failed
+    try {
+      await fetch('https://slack.com/api/workflows.stepFailed', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.Slack_Bot_Token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow_step_execute_id: payload.workflow_step.workflow_step_execute_id,
+          error: {
+            message: `Error: ${err.message}`
+          }
+        })
+      });
+    } catch (postErr) {
+      console.error('[WORKFLOW] Failed to report workflow step failure:', postErr);
+    }
+  }
 }
 
 /**
