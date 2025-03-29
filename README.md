@@ -188,7 +188,29 @@ wrangler secret put Slack_Bot_Token
 # Enter the Bot User OAuth Token from OAuth & Permissions
 ```
 
-Now test the Slack integration:
+#### 7.4 Testing Your Deployment
+
+**Development Environment Testing:**
+
+The development deployment includes a `/test` endpoint for basic verification:
+```bash
+# Test the development deployment's test endpoint
+curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
+# Should return: {"status":"ok","environment":"development"}
+```
+
+**Production Environment Testing:**
+
+The production deployment has the `/test` endpoint disabled for security:
+```bash
+# This should return a 404 in production
+curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
+# Should return: Not found
+```
+
+**Slack Integration Testing:**
+
+Test the Slack integration:
 1. In Slack, type `/ask-airia test message` in any channel
 2. Send a direct message to your Airia bot
 3. Mention the bot with `@Airia Bot test message` in a channel
@@ -207,7 +229,8 @@ npm run dev
 This uses the default environment configured in `wrangler.toml` with:
 - `ENVIRONMENT = "development"` variable
 - Development-friendly logging
-- Enabled test endpoints
+- Enabled `/test` endpoint for health checking
+- More verbose logging of environment variables
 
 ### Testing with Cloudflare Tunnel
 
@@ -254,8 +277,9 @@ wrangler deploy --env production
 
 This uses the production-specific configuration in `wrangler.toml` with:
 - `ENVIRONMENT = "production"` variable 
-- Disabled debugging endpoints
-- Minimal logging
+- Disabled `/test` endpoint for security (returns 404)
+- Minimal logging (no sensitive data, even partially)
+- No environment variable logging
 - Production-appropriate security settings
 
 ### Environment Configuration
