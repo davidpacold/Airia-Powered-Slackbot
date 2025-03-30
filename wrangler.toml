@@ -23,7 +23,7 @@ enabled = true
 # Note: Use secrets to store sensitive data.
 # - https://developers.cloudflare.com/workers/configuration/secrets/
 [vars]
-AIRIA_API_URL = "https://api.airia.ai/v1/PipelineExecution/fd16c532-6895-480a-bd4e-b08745b5aa54"
+AIRIA_API_URL = "YOUR_AIRIA_API_URL"
 ENVIRONMENT = "development"
 VERBOSE_LOGGING = "true"  # Set to "false" to disable verbose logging
 
@@ -33,11 +33,11 @@ VERBOSE_LOGGING = "true"  # Set to "false" to disable verbose logging
 
 # Development-specific configuration (default)
 [env.development]
-vars = { ENVIRONMENT = "development", AIRIA_API_URL = "https://api.airia.ai/v1/PipelineExecution/fd16c532-6895-480a-bd4e-b08745b5aa54", VERBOSE_LOGGING = "true" }
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_AIRIA_API_URL", VERBOSE_LOGGING = "true" }
 
 # Production configuration
 [env.production]
-vars = { ENVIRONMENT = "production", AIRIA_API_URL = "https://api.airia.ai/v1/PipelineExecution/fd16c532-6895-480a-bd4e-b08745b5aa54", VERBOSE_LOGGING = "false" }
+vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_AIRIA_API_URL", VERBOSE_LOGGING = "false" }
 
 # Bind the Workers AI model catalog. Run machine learning models, powered by serverless GPUs, on Cloudflare’s global network
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#workers-ai
