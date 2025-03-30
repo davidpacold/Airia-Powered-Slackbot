@@ -19,6 +19,14 @@ This project creates a Slack bot that allows users to send queries to Airia's AP
 
 The bot is built on Cloudflare Workers for serverless deployment and reliable performance.
 
+### Key Features
+
+- **Robust Thread Handling**: Multi-layered approach to thread detection with multiple fallbacks
+- **Message Context**: Summarizes messages with surrounding conversation for better context
+- **User Resolution**: Resolves Slack user IDs to real names for more readable summaries
+- **Detailed Diagnostics**: Optional verbose logging for troubleshooting and development
+- **Environment Separation**: Clear separation between development and production environments
+
 ### Expected Airia API Format
 
 This integration expects the Airia API to return responses in the following JSON format:
@@ -450,6 +458,7 @@ This uses the default environment configured in `wrangler.toml` with:
 - `ENVIRONMENT = "development"` variable
 - Development-friendly logging
 - Enabled `/test` endpoint for health checking
+- `VERBOSE_LOGGING = "true"` for detailed diagnostics
 - More verbose logging of environment variables
 
 ### Testing with Cloudflare Tunnel
@@ -497,6 +506,7 @@ wrangler deploy --env production
 
 This uses the production-specific configuration in `wrangler.toml` with:
 - `ENVIRONMENT = "production"` variable 
+- `VERBOSE_LOGGING = "false"` to reduce log volume in production
 - Disabled `/test` endpoint for security (returns 404)
 - Minimal logging (no sensitive data, even partially)
 - No environment variable logging
@@ -511,14 +521,15 @@ Edit the `wrangler.toml` file to configure environments:
 [vars]
 AIRIA_API_URL = "YOUR_DEV_API_URL"
 ENVIRONMENT = "development"
+VERBOSE_LOGGING = "true"  # Set to "false" to disable verbose logging
 
 # Development-specific configuration
 [env.development]
-vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL" }
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL", VERBOSE_LOGGING = "true" }
 
 # Production environment
 [env.production]
-vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL" }
+vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL", VERBOSE_LOGGING = "false" }
 ```
 
 > **Note**: With wrangler 4.x and newer, inline tables must be on a single line
@@ -617,12 +628,13 @@ Key files to edit:
 [env.development]
 vars = { 
   ENVIRONMENT = "development",
-  AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL" 
+  AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL",
+  VERBOSE_LOGGING = "true"
 }
 
 # Correct format
 [env.development]
-vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL" }
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_AIRIA_API_URL", VERBOSE_LOGGING = "true" }
 ```
 
 #### Error when making API requests to Airia
@@ -655,7 +667,16 @@ The thread detection has multiple fallback mechanisms to handle different Slack 
 - If a single message can't be replied to, the bot will post the summary as a new message
 - For best results, use the Summarize action on the first (parent) message of a thread
 
-If you encounter issues with specific messages, you can check the bot logs for more detailed information about what happened.
+For enhanced debugging:
+- Enable verbose logging by setting `VERBOSE_LOGGING = "true"` in your wrangler.toml
+- This will provide detailed diagnostic information about:
+  - Thread detection and timestamp validation
+  - User information resolution
+  - API request and response details
+  - Message content and context
+  - Error states and fallback mechanisms
+
+If you encounter issues with specific messages, review the logs for detailed information about what happened.
 
 ## Support
 
