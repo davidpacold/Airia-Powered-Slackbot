@@ -406,10 +406,19 @@ Test all Slack integration features:
 
 *Advanced Features:*
 4. Click the three dots menu (⋮) on any message and select "Summarize" to:
-   - Summarize a thread (if the message has replies)
-   - Summarize a single message (if it's not in a thread)
-   - Summarize recent conversation (for context)
+   - Summarize a thread (if the message has replies) - summary appears in the thread itself
+   - Summarize a single message (if it's not in a thread) - summary appears as a reply to the original message
+   - Summarize recent conversation (for context) - summary appears as a new message in the channel
    *(Note: Make sure to add the bot to any channels where you want to use this feature)*
+   
+   The thread detection and reply behavior now includes:
+   - Extremely robust thread detection with multiple fallback mechanisms
+   - Smart handling of thread parents vs. thread replies
+   - Timestamp validation and automatic cleaning of invalid formats
+   - Automatic retry with alternate timestamps if the first attempt fails
+   - Special handling for the "invalid_arguments" error that can occur with some thread formats
+   - Clear explanatory messages if a thread reply has to fall back to a regular message
+   - Detailed diagnostic logging to help troubleshoot edge cases
 5. Use the lightning bolt (⚡) icon in the message compose box and select "Ask AI Assistant"
 6. In Slack Workflow Builder, create a new workflow and add the "Generate response" step
 7. Share a link from your configured domain to see link unfurling
@@ -636,8 +645,17 @@ If you see errors related to permissions like `missing_scope` in your logs:
 If the "Summarize Thread" action is not correctly identifying threads:
 1. Ensure the bot has `channels:history` and `channels:join` permissions
 2. Check that the bot has been added to the channel
-3. Try using the action on the first message in the thread (thread parent)
+3. Try using the action on the first message in the thread (thread parent) - this works best
 4. For private channels, use `/invite @AI Assistant` before using thread features
+5. If summarizing a thread reply, ensure the parent message is still accessible
+
+The thread detection has multiple fallback mechanisms to handle different Slack thread formats and edge cases:
+- If a thread can't be processed due to an `invalid_arguments` error, it will fall back to single message summarization
+- If all thread approaches fail, it will fall back to summarizing recent conversation instead
+- If a single message can't be replied to, the bot will post the summary as a new message
+- For best results, use the Summarize action on the first (parent) message of a thread
+
+If you encounter issues with specific messages, you can check the bot logs for more detailed information about what happened.
 
 ## Support
 

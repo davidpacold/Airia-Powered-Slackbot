@@ -47,7 +47,7 @@ function logEnvValues(env) {
 }
 
 /**
- * Worker in Modules format: export default { fetch() { ... } }
+ * Worker in Modules format
  */
 export default {
   async fetch(request, env, ctx) {
@@ -82,7 +82,6 @@ export default {
 
       // 1) Get the raw body first for all request types
       const rawBody = await request.text();
-      console.log('[SLACK] Raw request body:', rawBody);
       
       // Special handling for URL verification - skip signature checks
       try {
@@ -101,8 +100,6 @@ export default {
       // 2) Normal Slack signature checks for non-challenge requests
       const timestamp = request.headers.get('X-Slack-Request-Timestamp');
       const slackSignature = request.headers.get('X-Slack-Signature');
-      console.log('[SLACK] timestamp:', timestamp);
-      console.log('[SLACK] slackSignature:', slackSignature);
 
       // Skip signature check if secret is not set (for initial URL verification)
       if (!env.Slack_Signing_Secret) {
@@ -124,8 +121,6 @@ export default {
 
         if (computedHash !== slackSignature) {
           console.error('[SLACK] Invalid Slack signature');
-          console.log('[SLACK] Computed Hash:', computedHash);
-          console.log('[SLACK] Received Slack Signature:', slackSignature);
           return new Response('Invalid request (invalid signature)', { status: 401 });
         }
         console.log('[SLACK] Slack signature verified.');
@@ -154,8 +149,6 @@ export default {
         return new Response('Invalid request format', { status: 400 });
       }
 
-      console.log('[SLACK] Parsed payload:', payload);
-
       // Slack URL verification (redundant but keeping for clarity)
       if (payload.type === 'url_verification') {
         console.log('[SLACK] Responding to Slack URL verification challenge...');
@@ -178,7 +171,6 @@ export default {
           payload.type === 'shortcut' || payload.type === 'workflow_step' ||
           payload.type === 'view_submission') {
         console.log('[INTERACTIVE] Interactive component triggered:', payload.type);
-        console.log('[INTERACTIVE] Payload details:', JSON.stringify(payload, null, 2));
         
         // Handle message action: "Summarize"
         if (payload.type === 'message_action' && payload.callback_id === 'summarize_thread') {
@@ -298,19 +290,7 @@ export default {
     // Not /slack or /test => 404
     console.warn('[WORKER] No matching route:', url.pathname);
     return new Response('Not found', { status: 404 });
-  },
-  
-  /**
-   * Add any additional Worker event handlers here:
-   * 
-   * scheduled: (event, env, ctx) => {
-   *   // Handle scheduled events (cron jobs)
-   * },
-   * 
-   * queue: (batch, env, ctx) => {
-   *   // Process queued messages
-   * },
-   */
+  }
 };
 
 /**
@@ -408,12 +388,16 @@ async function processMention(event, env) {
 
   // (1) Immediately send ephemeral "thinking" message
   try {
+    // Check if this is a message in a thread, if so place the ephemeral in the thread
+    const thread_ts = event.thread_ts || event.ts;
+    
     await postEphemeralMessage(env, {
       channel: event.channel,
       user: event.user,
       text: ':thinking_face: Working on it...',
+      thread_ts: thread_ts // Include to place ephemeral in thread if applicable
     });
-    console.log('[MENTION] Sent ephemeral thinking message');
+    console.log('[MENTION] Sent ephemeral thinking message', thread_ts ? `in thread ${thread_ts}` : '');
   } catch (err) {
     console.error('[MENTION] Error sending ephemeral message:', err);
   }
@@ -541,7 +525,7 @@ async function updateHomeTab(event, env) {
  * @param {Object} [blocks] - Optional blocks for rich formatting
  */
 async function postSlackMessage(env, channel, text, thread_ts = null, blocks = null) {
-  console.log('[SLACK POST] channel:', channel, ' text:', text, thread_ts ? ' (in thread)' : '');
+  console.log('[SLACK POST] channel:', channel, ' text:', text, thread_ts ? ` (in thread: ${thread_ts})` : '');
   
   const message = { 
     channel, 
@@ -550,7 +534,31 @@ async function postSlackMessage(env, channel, text, thread_ts = null, blocks = n
   
   // Add thread_ts if provided (for thread replies)
   if (thread_ts) {
-    message.thread_ts = thread_ts;
+    // Validate the timestamp format before using it
+    // Slack timestamps can have various formats but should always have a dot separator
+    const isValidTimestamp = (ts) => {
+      // Basic validation: string with numbers and a dot
+      return typeof ts === 'string' && /^\d+\.\d+$/.test(ts);
+    };
+    
+    // More flexible validation as backup
+    const isValidTimestampFallback = (ts) => {
+      // Allow any string with digits and dots that's between 10-20 chars
+      return typeof ts === 'string' && 
+             ts.length >= 10 && 
+             ts.length <= 20 && 
+             ts.includes('.');
+    };
+    
+    if (isValidTimestamp(thread_ts)) {
+      message.thread_ts = thread_ts;
+    } else if (isValidTimestampFallback(thread_ts)) {
+      console.log('[SLACK POST] Using non-standard timestamp format:', thread_ts);
+      message.thread_ts = thread_ts;
+    } else {
+      console.warn('[SLACK POST] Invalid thread_ts format:', thread_ts, '- skipping thread reply');
+      throw new Error(`Invalid thread_ts format: ${thread_ts}`);
+    }
   }
   
   // Add blocks if provided (for rich formatting)
@@ -558,7 +566,7 @@ async function postSlackMessage(env, channel, text, thread_ts = null, blocks = n
     message.blocks = blocks;
   }
   
-  await fetch('https://slack.com/api/chat.postMessage', {
+  const response = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.Slack_Bot_Token}`,
@@ -566,20 +574,64 @@ async function postSlackMessage(env, channel, text, thread_ts = null, blocks = n
     },
     body: JSON.stringify(message),
   });
+  
+  // Check for API errors
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[SLACK POST] HTTP error posting message:', response.status, errorText);
+    throw new Error(`Slack API error: ${response.status} - ${errorText}`);
+  }
+  
+  const result = await response.json();
+  if (!result.ok) {
+    console.error('[SLACK POST] Slack API error:', result.error);
+    throw new Error(`Slack API error: ${result.error}`);
+  }
+  
+  return result;
 }
 
 /**
  * Post an ephemeral message to Slack (visible only to `user` in `channel`)
+ * Now supports thread_ts parameter to place ephemeral messages in threads
  */
-async function postEphemeralMessage(env, { channel, user, text }) {
-  console.log('[SLACK EPHEMERAL] channel:', channel, ' user:', user, ' text:', text);
+async function postEphemeralMessage(env, { channel, user, text, thread_ts = null }) {
+  console.log('[SLACK EPHEMERAL] channel:', channel, ' user:', user, ' text:', text, thread_ts ? ` (in thread: ${thread_ts})` : '');
+  
+  const payload = { channel, user, text };
+  
+  // Add thread_ts if provided to make ephemeral appear in a thread
+  if (thread_ts) {
+    // Similar validation as in postSlackMessage
+    const isValidTimestamp = (ts) => {
+      return typeof ts === 'string' && /^\d+\.\d+$/.test(ts);
+    };
+    
+    // More flexible validation as backup
+    const isValidTimestampFallback = (ts) => {
+      return typeof ts === 'string' && 
+             ts.length >= 10 && 
+             ts.length <= 20 && 
+             ts.includes('.');
+    };
+    
+    if (isValidTimestamp(thread_ts)) {
+      payload.thread_ts = thread_ts;
+    } else if (isValidTimestampFallback(thread_ts)) {
+      console.log('[SLACK EPHEMERAL] Using non-standard timestamp format:', thread_ts);
+      payload.thread_ts = thread_ts;
+    } else {
+      console.warn('[SLACK EPHEMERAL] Invalid thread_ts format:', thread_ts, '- ephemeral will appear in main channel');
+    }
+  }
+  
   const response = await fetch('https://slack.com/api/chat.postEphemeral', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.Slack_Bot_Token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ channel, user, text }),
+    body: JSON.stringify(payload),
   });
   const json = await response.json();
   console.log('[SLACK EPHEMERAL] postEphemeral response:', json);
@@ -591,36 +643,25 @@ async function postEphemeralMessage(env, { channel, user, text }) {
  */
 async function processThreadSummary(payload, env) {
   console.log('[SUMMARY] Processing summarize request');
-  console.log('[SUMMARY] Payload:', JSON.stringify(payload, null, 2));
   
   try {
-    // Extract channel ID and message timestamp based on payload structure
-    // The payload structure can vary based on how the action was triggered
-    let channelId, messageTs, userId;
+    console.log('[SUMMARY] Starting summary processing with payload:', JSON.stringify(payload, null, 2).substring(0, 500) + '...');
     
-    // Handle different payload structures
+    // 1. Extract basic info from payload
+    let channelId, userId, targetTs;
+    let isThreadMessage = false;  // Default values before we determine thread status
+    let isThreadParent = false;
+    let threadTs = null;
+    
+    // Get channel ID
     if (payload.channel && typeof payload.channel === 'string') {
-      // Direct channel ID in payload
       channelId = payload.channel;
     } else if (payload.channel && payload.channel.id) {
-      // Channel object in payload
       channelId = payload.channel.id;
     } else if (payload.message && payload.message.channel) {
-      // Channel in message object
       channelId = payload.message.channel;
     } else {
       throw new Error('Could not determine channel ID from payload');
-    }
-    
-    // Get message timestamp
-    if (payload.message_ts) {
-      messageTs = payload.message_ts;
-    } else if (payload.message && payload.message.ts) {
-      messageTs = payload.message.ts;
-    } else if (payload.container && payload.container.message_ts) {
-      messageTs = payload.container.message_ts;
-    } else {
-      throw new Error('Could not determine message timestamp from payload');
     }
     
     // Get user ID
@@ -634,194 +675,241 @@ async function processThreadSummary(payload, env) {
       throw new Error('Could not determine user ID from payload');
     }
     
-    console.log('[THREAD_SUMMARY] Extracted info:', { 
-      channelId, 
-      messageTs, 
-      userId 
+    // Extract the message timestamp - what message was the action performed on?
+    if (payload.message_ts) {
+      targetTs = payload.message_ts;
+    } else if (payload.message && payload.message.ts) {
+      targetTs = payload.message.ts;
+    } else if (payload.container && payload.container.message_ts) {
+      targetTs = payload.container.message_ts;
+    } else {
+      console.warn('[SUMMARY] Could not find target timestamp, will use recent conversation');
+    }
+    
+    // Determine if this is a thread message - now guaranteed to be initialized
+    if (payload.message && payload.message.thread_ts) {
+      isThreadMessage = true;
+      threadTs = payload.message.thread_ts;
+      isThreadParent = (payload.message.thread_ts === payload.message.ts);
+      console.log('[SUMMARY] Detected thread context:', { isThreadMessage, isThreadParent, threadTs });
+    }
+    
+    // Inform the user we're working on it
+    // If we have a thread_ts (targetTs or threadTs), use it for the ephemeral message to place it in the thread
+    const threadForEphemeral = isThreadMessage ? (threadTs || targetTs) : targetTs;
+    
+    console.log('[SUMMARY] Sending ephemeral with thread context:', { 
+      threadForEphemeral, 
+      isThreadMessage, 
+      threadTs, 
+      targetTs 
     });
     
-    // Step 1: Retrieve the conversation history to get the thread
-    console.log('[THREAD_SUMMARY] Fetching thread with params:', {
-      channel: channelId,
-      ts: messageTs
-    });
-    
-    // Add a small delay to make sure Slack has processed the message
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Send an explicit "thinking" message to the user first
     await postEphemeralMessage(env, {
       channel: channelId,
       user: userId,
-      text: `:thinking_face: Processing thread summary...`,
+      text: `:thinking_face: Processing your summary request...`,
+      thread_ts: threadForEphemeral // Pass thread_ts to place ephemeral in thread
     });
     
-    // Try to join the channel first if it's a public channel
+    // 2. Try to join the channel (could fail for private channels, which is OK)
     try {
-      const joinResponse = await fetch(`https://slack.com/api/conversations.join`, {
+      await fetch(`https://slack.com/api/conversations.join`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${env.Slack_Bot_Token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          channel: channelId
-        }),
+        body: JSON.stringify({ channel: channelId }),
       });
-      
-      const joinData = await joinResponse.json();
-      console.log('[THREAD_SUMMARY] Channel join attempt:', 
-        joinData.ok ? 'Joined successfully' : `Failed: ${joinData.error}`);
-      
-      // For private channels, join will fail but that's expected
     } catch (joinErr) {
-      console.log('[THREAD_SUMMARY] Channel join error (expected for private channels):', joinErr.message);
+      console.log('[SUMMARY] Channel join error (expected for private channels):', joinErr.message);
     }
     
-    // Now try to fetch the message
-    let parentMsgData;
-    let isThread = false;  // Initialize the thread status flag
-    let firstMessage = null;
+    // 3. Variables to track what we're summarizing
+    let messages = [];           // Messages to summarize
+    let contextType = 'recent';  // Type of summary (thread, single, recent)
+    let replyToTs = null;        // Message to reply to (null = post as new message)
     
-    try {
-      const parentMsgResponse = await fetch(`https://slack.com/api/conversations.history`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.Slack_Bot_Token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          channel: channelId,
-          latest: messageTs,
-          limit: 1,
-          inclusive: true,
-          include_all_metadata: true // Get full thread metadata
-        }),
-      });
-      
-      parentMsgData = await parentMsgResponse.json();
-      console.log('[SUMMARY] Parent message check:', 
-        parentMsgData.ok ? 'Message found' : `Error: ${parentMsgData.error}`);
-      
-      if (!parentMsgData.ok) {
-        console.error('[SUMMARY] Failed to retrieve parent message:', parentMsgData.error);
-        
-        let errorMessage = `Error retrieving message: ${parentMsgData.error}.`;
-        
-        if (parentMsgData.error === 'not_in_channel') {
-          errorMessage = `The bot needs to be added to this channel. Please add @AI Assistant to the channel and try again.`;
-        } else if (parentMsgData.error === 'channel_not_found') {
-          errorMessage = `The bot can't access this channel. For private channels, please add @AI Assistant to the channel first.`;
-        } else if (parentMsgData.error === 'missing_scope') {
-          errorMessage = `The bot is missing required permissions. Please reinstall the app with the needed scopes.`;
-        }
-        
-        await postEphemeralMessage(env, {
-          channel: channelId,
-          user: userId,
-          text: errorMessage,
-        });
-        return;
-      }
-      
-      if (!parentMsgData.messages || parentMsgData.messages.length === 0) {
-        console.error('[SUMMARY] Parent message not found');
-        await postEphemeralMessage(env, {
-          channel: channelId,
-          user: userId,
-          text: `Error: Could not find the parent message. The message may have been deleted or the bot doesn't have permission to view it.`,
-        });
-        return;
-      }
-      
-      // Check if the message is a thread parent or reply
-      firstMessage = parentMsgData.messages[0];
-      
-      // If this is a reply in a thread, we need to get the parent message's timestamp
-      if (firstMessage.thread_ts && firstMessage.thread_ts !== messageTs) {
-        console.log('[SUMMARY] This is a reply in a thread, using thread_ts instead:', firstMessage.thread_ts);
-        messageTs = firstMessage.thread_ts;
-      }
-      
-      // Check if it's a thread or not
-      isThread = !!(firstMessage.thread_ts || firstMessage.reply_count);
-      
-      // Additional debugging to help understand why thread detection might be failing
-      console.log('[SUMMARY] Thread detection details:', {
-        messageTs,
-        firstMessage_ts: firstMessage.ts,
-        thread_ts: firstMessage.thread_ts,
-        reply_count: firstMessage.reply_count,
-        has_replies: firstMessage.reply_count > 0
-      });
-      
-      // For messages that have replies but don't have thread_ts set, we should still consider them threads
-      if (firstMessage.reply_count && firstMessage.reply_count > 0) {
-        isThread = true;
-      }
-      
-      console.log('[SUMMARY] Is message part of a thread?', isThread);
-      
-    } catch (accessErr) {
-      console.error('[SUMMARY] Error accessing channel:', accessErr);
-      await postEphemeralMessage(env, {
-        channel: channelId,
-        user: userId,
-        text: `Error accessing the channel: ${accessErr.message}. Please check that the bot has proper permissions.`,
-      });
-      return;
-    }
+    // Thread context is already determined earlier - log the full context again for clarity
+    console.log('[SUMMARY] Thread context check:', {
+      isThreadMessage,
+      isThreadParent,
+      threadTs,
+      targetTs,
+      useForReply: isThreadMessage ? (isThreadParent ? targetTs : threadTs) : targetTs
+    });
     
-    // Now get either thread replies or recent messages
-    try {
-      let messages = [];
-      let contextType = '';
-      
-      // isThread is now properly initialized above
-      
-      // Before deciding on thread vs non-thread approach, do a direct check with conversations.replies
-      // This ensures we handle cases where the API might not return thread metadata consistently
-      let forcedThreadCheck = false;
-      
-      if (!isThread) {
-        console.log('[SUMMARY] Performing a direct thread check to verify thread status');
+    // Get message contents using a sequence of approaches, from most specific to most general
+    
+    // APPROACH A: If it's a thread message, get the thread
+    if (isThreadMessage && threadTs) {
+      try {
+        console.log('[SUMMARY] Getting thread messages using thread_ts:', threadTs);
         
-        try {
-          // Try to get replies - if this works, it's a thread regardless of metadata
-          const threadCheckResponse = await fetch(`https://slack.com/api/conversations.replies`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${env.Slack_Bot_Token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              channel: channelId,
-              ts: messageTs,
-            }),
-          });
-          
-          const threadCheckData = await threadCheckResponse.json();
-          
-          // If replies has more than 1 message, it's a thread
-          if (threadCheckData.ok && threadCheckData.messages && threadCheckData.messages.length > 1) {
-            console.log('[SUMMARY] Direct thread check found replies:', threadCheckData.messages.length);
-            isThread = true;
-            forcedThreadCheck = true;
-            // Use the already fetched replies
-            messages = threadCheckData.messages;
-            contextType = 'thread';
-          } else {
-            console.log('[SUMMARY] Direct thread check found no replies');
+        // Log and check the exact values we're sending to the API for debugging
+        const requestParams = {
+          channel: channelId,
+          ts: threadTs
+        };
+        
+        console.log('[SUMMARY] Thread API request parameters:', JSON.stringify(requestParams));
+        
+        // Validate timestamp format before making API call
+        const isValidTS = typeof threadTs === 'string' && /^\d+\.\d+$/.test(threadTs);
+        console.log('[SUMMARY] Thread timestamp validation:', {
+          threadTs,
+          isValid: isValidTS,
+          typeof: typeof threadTs
+        });
+        
+        // If timestamp doesn't look valid, try cleaning it
+        let cleanTs = threadTs;
+        if (!isValidTS && typeof threadTs === 'string') {
+          // Extract numbers and dots only, discard everything else
+          cleanTs = threadTs.replace(/[^\d.]/g, '');
+          // Ensure only one dot
+          const parts = cleanTs.split('.');
+          if (parts.length > 2) {
+            cleanTs = parts[0] + '.' + parts.slice(1).join('');
           }
-        } catch (checkErr) {
-          console.log('[SUMMARY] Error during direct thread check:', checkErr.message);
+          console.log('[SUMMARY] Cleaned timestamp:', cleanTs);
+          
+          // Use cleaned timestamp if it looks valid now
+          if (/^\d+\.\d+$/.test(cleanTs)) {
+            requestParams.ts = cleanTs;
+            console.log('[SUMMARY] Using cleaned timestamp for API call');
+          }
         }
+        
+        // The conversations.replies API requires both 'channel' and 'ts' parameters
+        // Make sure both are properly formatted before sending
+        if (!requestParams.channel || !requestParams.ts) {
+          console.error('[SUMMARY] Missing required parameter:', !requestParams.channel ? 'channel' : 'ts');
+          throw new Error('Missing required parameter for thread retrieval');
+        }
+        
+        // Slack expects a specific timestamp format: try to ensure it's correct
+        if (requestParams.ts) {
+          // Further clean any potential bad formats
+          const cleanedTs = requestParams.ts.toString().trim();
+          
+          // Ensure we have a dot and convert any commans to dots
+          if (cleanedTs.includes(',')) {
+            requestParams.ts = cleanedTs.replace(',', '.');
+            console.log('[SUMMARY] Fixed timestamp format (comma to dot):', requestParams.ts);
+          }
+          
+          // Final check for Slack's expected ts format (numbers.numbers)
+          if (!/^\d+\.\d+$/.test(requestParams.ts)) {
+            console.warn('[SUMMARY] Timestamp still may not match Slack\'s required format:', requestParams.ts);
+            
+            // Try one last fix - extract valid numbers and add a dot if needed
+            const numbers = requestParams.ts.replace(/[^\d]/g, '');
+            if (numbers.length >= 10) {
+              // Insert a dot at position 10 if there isn't one already
+              const dotPos = Math.min(10, Math.floor(numbers.length/2));
+              requestParams.ts = numbers.slice(0, dotPos) + '.' + numbers.slice(dotPos);
+              console.log('[SUMMARY] Last attempt timestamp format fix:', requestParams.ts);
+            }
+          }
+        }
+        
+        console.log('[SUMMARY] Final API request parameters:', JSON.stringify(requestParams));
+        
+        // For conversations.replies, try both POST and GET methods
+        // Some Slack API issues might be related to method or content-type conflicts
+        console.log('[SUMMARY] Trying conversations.replies with GET method');
+        
+        // Use URL parameters instead of JSON body for GET request
+        const apiUrl = `https://slack.com/api/conversations.replies?channel=${encodeURIComponent(requestParams.channel)}&ts=${encodeURIComponent(requestParams.ts)}`;
+        console.log('[SUMMARY] API URL:', apiUrl);
+        
+        const threadResponse = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${env.Slack_Bot_Token}`,
+            'Accept': 'application/json',
+          }
+        });
+        
+        const threadData = await threadResponse.json();
+        
+        if (threadData.ok && threadData.messages && threadData.messages.length > 0) {
+          console.log('[SUMMARY] Successfully got thread with', threadData.messages.length, 'messages');
+          messages = threadData.messages;
+          contextType = 'thread';
+          
+          // For thread parents vs replies, use the appropriate timestamp:
+          // - For thread parent: use its own timestamp (targetTs) 
+          // - For thread replies: use thread parent timestamp (threadTs)
+          replyToTs = isThreadParent ? targetTs : threadTs;
+        } else {
+          console.warn('[SUMMARY] Failed to get thread:', threadData.error);
+          
+          // Try an alternative approach specifically for invalid_arguments
+          if (threadData.error === 'invalid_arguments' && targetTs && targetTs !== threadTs) {
+            console.log('[SUMMARY] Trying alternative timestamp approach with targetTs:', targetTs);
+            
+            try {
+              // Try cleaning the targetTs the same way
+              let cleanTargetTs = targetTs;
+              if (typeof cleanTargetTs === 'string') {
+                cleanTargetTs = cleanTargetTs.trim();
+                if (cleanTargetTs.includes(',')) {
+                  cleanTargetTs = cleanTargetTs.replace(',', '.');
+                }
+                if (!/^\d+\.\d+$/.test(cleanTargetTs)) {
+                  const numbers = cleanTargetTs.replace(/[^\d]/g, '');
+                  if (numbers.length >= 10) {
+                    const dotPos = Math.min(10, Math.floor(numbers.length/2));
+                    cleanTargetTs = numbers.slice(0, dotPos) + '.' + numbers.slice(dotPos);
+                  }
+                }
+              }
+              
+              console.log('[SUMMARY] Using cleaned targetTs:', cleanTargetTs);
+              
+              // Also try GET method for alternative approach
+              console.log('[SUMMARY] Trying alternative timestamp with GET method');
+              const altResponse = await fetch(`https://slack.com/api/conversations.replies?channel=${encodeURIComponent(channelId)}&ts=${encodeURIComponent(cleanTargetTs)}`, {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${env.Slack_Bot_Token}`,
+                  'Accept': 'application/json',
+                }
+              });
+              
+              const altData = await altResponse.json();
+              
+              if (altData.ok && altData.messages && altData.messages.length > 0) {
+                console.log('[SUMMARY] Success with alternative approach!', altData.messages.length, 'messages');
+                messages = altData.messages;
+                contextType = 'thread';
+                replyToTs = targetTs;
+                return; // Skip to AI processing since we have messages now
+              } else {
+                console.warn('[SUMMARY] Alternative approach also failed:', altData.error);
+              }
+            } catch (altErr) {
+              console.error('[SUMMARY] Error in alternative approach:', altErr.message);
+            }
+          }
+          
+          // Continue to next approach if all thread approaches fail
+        }
+      } catch (threadErr) {
+        console.warn('[SUMMARY] Error fetching thread:', threadErr.message);
+        // Continue to next approach
       }
-      
-      // Branch based on whether it's a thread or regular message
-      if (isThread && !forcedThreadCheck) {
-        // Get thread replies for a threaded message
-        const threadResponse = await fetch(`https://slack.com/api/conversations.replies`, {
+    }
+    
+    // APPROACH B: If we don't have messages and have a target message, get it
+    if (messages.length === 0 && targetTs) {
+      try {
+        console.log('[SUMMARY] Getting single message with ts:', targetTs);
+        
+        const singleResponse = await fetch(`https://slack.com/api/conversations.history`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${env.Slack_Bot_Token}`,
@@ -829,66 +917,34 @@ async function processThreadSummary(payload, env) {
           },
           body: JSON.stringify({
             channel: channelId,
-            ts: messageTs,
+            latest: targetTs,
+            limit: 1,
+            inclusive: true,
           }),
         });
         
-        const threadData = await threadResponse.json();
-        console.log('[SUMMARY] Thread replies response:', 
-          threadData.ok ? 
-          `Success (found ${threadData.messages ? threadData.messages.length : 0} messages)` : 
-          `Error: ${threadData.error}`
-        );
+        const singleData = await singleResponse.json();
         
-        if (!threadData.ok) {
-          console.error('[SUMMARY] Failed to retrieve thread:', threadData.error);
-          let errorMessage = `Error retrieving thread: ${threadData.error}`;
-          
-          if (threadData.error === 'invalid_arguments') {
-            // Even though we detected a thread earlier, we couldn't retrieve it
-            // Switch to non-thread context
-            console.log('[SUMMARY] Switching to non-thread context...');
-            messages = [firstMessage];
-            contextType = 'single message';
-          } else if (threadData.error === 'thread_not_found') {
-            // Same as above
-            console.log('[SUMMARY] Thread not found, switching to non-thread context...');
-            messages = [firstMessage];
-            contextType = 'single message';
-          } else if (threadData.error === 'channel_not_found') {
-            errorMessage = `The bot doesn't have access to this channel. Please add the bot to the channel and try again.`;
-            await postEphemeralMessage(env, {
-              channel: channelId,
-              user: userId,
-              text: errorMessage,
-            });
-            return;
-          } else {
-            await postEphemeralMessage(env, {
-              channel: channelId,
-              user: userId,
-              text: errorMessage,
-            });
-            return;
-          }
+        if (singleData.ok && singleData.messages && singleData.messages.length > 0) {
+          console.log('[SUMMARY] Successfully got single message');
+          messages = singleData.messages;
+          contextType = 'single';
+          replyToTs = targetTs;  // Reply to the specific message
         } else {
-          // We successfully got thread replies
-          messages = threadData.messages;
-          contextType = 'thread';
-          
-          // Check if there are actually replies
-          if (messages.length <= 1) {
-            console.log('[SUMMARY] Thread has no replies, switching to non-thread context');
-            // If there's just one message, treat it as a regular message
-            messages = [firstMessage];
-            contextType = 'single message';
-          }
+          console.warn('[SUMMARY] Failed to get single message:', singleData.error);
+          // Continue to next approach
         }
-      } else if (!forcedThreadCheck) {
-        // For non-threaded messages, get recent messages in the channel
-        console.log('[SUMMARY] Not a thread, fetching context from conversation history');
+      } catch (singleErr) {
+        console.warn('[SUMMARY] Error fetching single message:', singleErr.message);
+        // Continue to next approach
+      }
+    }
+    
+    // APPROACH C: Fallback to recent conversation if we still don't have messages
+    if (messages.length === 0) {
+      try {
+        console.log('[SUMMARY] Falling back to recent conversation');
         
-        // Get recent messages (up to 10) to provide context
         const historyResponse = await fetch(`https://slack.com/api/conversations.history`, {
           method: 'POST',
           headers: {
@@ -897,113 +953,154 @@ async function processThreadSummary(payload, env) {
           },
           body: JSON.stringify({
             channel: channelId,
-            limit: 10, // Get last 10 messages
-            include_all_metadata: true // Get full thread metadata
+            limit: 10,  // Get 10 most recent messages
           }),
         });
         
         const historyData = await historyResponse.json();
-        if (!historyData.ok) {
-          console.error('[SUMMARY] Failed to retrieve history:', historyData.error);
-          await postEphemeralMessage(env, {
-            channel: channelId,
-            user: userId,
-            text: `Error retrieving message history: ${historyData.error}`,
-          });
-          return;
-        }
         
-        // Use the recent messages as context
-        messages = historyData.messages;
-        contextType = 'recent conversation';
+        if (historyData.ok && historyData.messages && historyData.messages.length > 0) {
+          console.log('[SUMMARY] Got', historyData.messages.length, 'recent messages');
+          messages = historyData.messages;
+          contextType = 'recent';
+          replyToTs = null;  // Post as new message for recent context
+        } else {
+          console.error('[SUMMARY] Failed to get recent messages:', historyData.error);
+          throw new Error(`Could not fetch any messages: ${historyData.error}`);
+        }
+      } catch (historyErr) {
+        console.error('[SUMMARY] Error fetching recent messages:', historyErr.message);
+        throw new Error(`Could not fetch recent messages: ${historyErr.message}`);
       }
-      
-      // Format the messages for the AI
-      let messageText = messages
-        .map(msg => `${msg.user || 'User'}: ${msg.text}`)
-        .join('\n');
-      
-      // Limit the text size if it's too large
-      if (messageText.length > 10000) {
-        console.log('[SUMMARY] Truncating long message text');
-        messageText = messageText.substring(0, 10000) + '... (truncated)';
-      }
-      
-      console.log(`[SUMMARY] Processing ${contextType} with ${messages.length} messages`);
-      
-      // Call the AI API with the context
-      const promptMap = {
-        'thread': 'Summarize this conversation thread:',
-        'single message': 'Summarize this message:',
-        'recent conversation': 'Summarize these recent messages from a conversation:'
-      };
-      
-      const prompt = promptMap[contextType] || 'Summarize this:';
-      
-      const aiRes = await fetch(env.AIRIA_API_URL, {
-        method: 'POST',
-        headers: {
-          'X-API-KEY': env.Airia_API_key,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          userInput: `${prompt} ${messageText}`, 
-          asyncOutput: false
-        }),
-      });
-      
-      if (!aiRes.ok) {
-        console.error('[SUMMARY] Airia API error:', aiRes.status);
-        await postEphemeralMessage(env, {
-          channel: channelId,
-          user: userId,
-          text: `Error summarizing: API error ${aiRes.status}`,
-        });
-        return;
-      }
-      
-      // Parse and post the summary
-      const aiJson = JSON.parse(await aiRes.text());
-      
-      // Create a title based on the context type
-      const titleMap = {
-        'thread': '*Thread Summary:*',
-        'single message': '*Message Summary:*',
-        'recent conversation': '*Conversation Summary:*'
-      };
-      
-      const title = titleMap[contextType] || '*Summary:*';
-      
-      // For thread, post as a reply; for others, post as a new message
-      if (contextType === 'thread') {
-        await postSlackMessage(env, channelId, `${title}\n${aiJson.result}`, messageTs);
-      } else {
-        await postSlackMessage(env, channelId, `${title}\n${aiJson.result}`);
-      }
-      
-      console.log(`[SUMMARY] Posted ${contextType} summary successfully`);
-      
-    } catch (processingErr) {
-      console.error('[SUMMARY] Error processing content:', processingErr);
-      await postEphemeralMessage(env, {
-        channel: channelId,
-        user: userId,
-        text: `Error processing content: ${processingErr.message}`,
-      });
     }
     
-    // All thread processing now happens inside the try/catch block above
-  } catch (err) {
-    console.error('[SUMMARY] Error:', err);
+    // 5. Make sure we have messages to summarize
+    if (messages.length === 0) {
+      throw new Error('No messages available to summarize');
+    }
+    
+    // 6. Format the messages for the AI
+    console.log(`[SUMMARY] Summarizing ${messages.length} messages (${contextType} context)`);
+    const messageText = messages
+      .map(msg => `${msg.user || 'User'}: ${msg.text || '[no text]'}`)
+      .join('\n');
+    
+    // 7. Limit text size if needed
+    const truncatedText = messageText.length > 10000 
+      ? messageText.substring(0, 10000) + '... (truncated)' 
+      : messageText;
+    
+    // 8. Call the AI API with appropriate prompt
+    const promptMap = {
+      'thread': 'Summarize this conversation thread:',
+      'single': 'Summarize this message:',
+      'recent': 'Summarize these recent messages from a conversation:'
+    };
+    
+    const prompt = promptMap[contextType] || 'Summarize this:';
+    
+    const aiRes = await fetch(env.AIRIA_API_URL, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': env.Airia_API_key,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        userInput: `${prompt} ${truncatedText}`, 
+        asyncOutput: false
+      }),
+    });
+    
+    if (!aiRes.ok) {
+      throw new Error(`AI API returned error: ${aiRes.status}`);
+    }
+    
+    // 9. Process the AI response
+    const aiJson = JSON.parse(await aiRes.text());
+    if (!aiJson.result) {
+      throw new Error('AI response missing expected "result" field');
+    }
+    
+    // 10. Create a title and format summary
+    const titleMap = {
+      'thread': '*Thread Summary:*',
+      'single': '*Message Summary:*',
+      'recent': '*Conversation Summary:*'
+    };
+    
+    const title = titleMap[contextType] || '*Summary:*';
+    const formattedSummary = `${title}\n${aiJson.result}`;
+    
+    // 11. Post the summary
     try {
-      // Try to notify the user of the error with best-effort information extraction
-      let channelId = (
+      if (replyToTs) {
+        // Try to post as a reply with the primary timestamp
+        try {
+          await postSlackMessage(env, channelId, formattedSummary, replyToTs);
+          console.log(`[SUMMARY] Posted summary as a reply to message ${replyToTs}`);
+        } catch (replyErr) {
+          console.warn(`[SUMMARY] Failed to post as reply to ${replyToTs}: ${replyErr.message}`);
+          
+          // If we're in a thread but the main timestamp failed, try the targeting timestamp
+          if (contextType === 'thread' && targetTs && targetTs !== replyToTs) {
+            try {
+              console.log(`[SUMMARY] Trying alternate timestamp for thread reply: ${targetTs}`);
+              await postSlackMessage(env, channelId, formattedSummary, targetTs);
+              console.log(`[SUMMARY] Posted summary as reply using alternate timestamp ${targetTs}`);
+              return;
+            } catch (altErr) {
+              console.warn(`[SUMMARY] Failed with alternate timestamp too: ${altErr.message}`);
+            }
+          }
+          
+          // If all reply attempts failed, post as a new message
+          console.warn(`[SUMMARY] All reply attempts failed, sending as new message`);
+          
+          // Add a note to the message explaining it should have been a reply
+          const notePrefix = contextType === 'thread' 
+            ? '*Note: This summary was meant to be posted in the thread but failed. Thread summary:*\n\n'
+            : '*Note: This should have been a reply but failed. Message summary:*\n\n';
+          
+          await postSlackMessage(env, channelId, notePrefix + formattedSummary);
+          console.log(`[SUMMARY] Posted summary as a new message (fallback) with note`);
+        }
+      } else {
+        // Post as new message (for recent conversation context)
+        await postSlackMessage(env, channelId, formattedSummary);
+        console.log('[SUMMARY] Posted summary as a new message');
+      }
+      
+      // Always log that the summary was successfully posted
+      console.log('[SUMMARY-SUCCESS] Successfully posted summary', {
+        type: contextType,
+        messageCount: messages.length,
+        replyToTs: replyToTs || 'none (posted as new message)'
+      });
+    } catch (postErr) {
+      // If everything fails, try one last simple message
+      try {
+        const errorMsg = `*Summary* (Error posting full response: ${postErr.message})\n\n${aiJson.result.substring(0, 1000)}...`;
+        await postSlackMessage(env, channelId, errorMsg);
+        console.log('[SUMMARY] Posted simplified summary after errors');
+      } catch (finalErr) {
+        throw new Error(`Failed to post any summary: ${finalErr.message}`);
+      }
+    }
+    
+  } catch (err) {
+    // Global error handler
+    console.error('[SUMMARY] Error:', err);
+    
+    // Try to notify the user
+    try {
+      // Extract channel and user IDs with fallbacks
+      const channelId = (
         (payload.channel && payload.channel.id) || 
         (payload.channel && typeof payload.channel === 'string' && payload.channel) || 
         (payload.message && payload.message.channel)
       );
       
-      let userId = (
+      const userId = (
         (payload.user && payload.user.id) || 
         (payload.user && typeof payload.user === 'string' && payload.user) || 
         payload.user_id
@@ -1013,13 +1110,11 @@ async function processThreadSummary(payload, env) {
         await postEphemeralMessage(env, {
           channel: channelId,
           user: userId,
-          text: `Error processing thread summary: ${err.message}`,
+          text: `Error summarizing content: ${err.message}`,
         });
-      } else {
-        console.error('[THREAD_SUMMARY] Could not send error message: missing channel or user ID');
       }
-    } catch (postErr) {
-      console.error('[THREAD_SUMMARY] Failed to send error message:', postErr);
+    } catch (notifyErr) {
+      console.error('[SUMMARY] Failed to notify user of error:', notifyErr);
     }
   }
 }
