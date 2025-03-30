@@ -115,25 +115,18 @@ npx wrangler --version
 npm install --save-dev wrangler@4
 ```
 
-#### Continue with setup:
+#### Continue with Cloudflare setup:
 
 ```bash
 # Log in to Cloudflare (will open browser for authentication)
 npx wrangler login
-
-# Create a new Cloudflare Worker (using npx)
-npx wrangler init
 ```
 
-When prompted during `wrangler init`:
-- Select "Deploy an existing application" when asked about the Worker type
-- Select "No" for starting with a starter template
-- Select "Yes" for typechecking with TypeScript
-- Select "No" for using git for version control (since you already cloned the repo)
+Since this is an existing project, there's no need to run `wrangler init` - the project is already initialized with all the necessary files. You can proceed to configuring and deploying.
 
-### 3. Configure Worker Name
+### 3. Configure Worker Name (Optional)
 
-Edit the `wrangler.toml` file:
+If you want to change the default Worker name, edit the `wrangler.toml` file:
 
 ```bash
 # On macOS/Linux
@@ -143,19 +136,20 @@ sed -i '' 's/name = ".*"/name = "airia-slackbot"/' wrangler.toml
 # name = "airia-slackbot"
 ```
 
+Note: Changing the name is optional. The default name in the repository is `github-airia-slackbot`, but you can customize it to whatever you prefer.
+
 ### 4. Configure Environment Variables
 
-Edit your Airia API URLs in the `wrangler.toml` file:
+Update the Airia API URLs in the `wrangler.toml` file to point to your specific Airia endpoints:
 
 ```bash
-# For development environment
-sed -i '' 's/YOUR_DEV_AIRIA_API_URL/https:\/\/dev-api.example.com\/airia/' wrangler.toml
-
-# For production environment
-sed -i '' 's/YOUR_PRODUCTION_AIRIA_API_URL/https:\/\/api.example.com\/airia/' wrangler.toml
-
-# Or edit manually in your text editor
+# Edit manually in your text editor, replacing the existing URLs with your actual API endpoints
+# For example, change:
+# AIRIA_API_URL = "https://api.airia.ai/v1/PipelineExecution/fd16c532-6895-480a-bd4e-b08745b5aa54"
+# to your specific endpoint
 ```
+
+The current wrangler.toml already contains placeholder Airia API URLs. You should replace these with your actual API endpoints for both development and production environments.
 
 ### 5. Add Secrets
 
@@ -212,10 +206,13 @@ npx wrangler deploy --env production
 After deploying your worker, you'll need to configure a Slack app to connect to it:
 
 ```bash
-# Get your Worker URL (note this for the next steps)
+# Get your Worker URL (if needed)
 npx wrangler whoami
-echo "Your worker is deployed at: https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev"
 ```
+
+The deployment output from the previous step will have shown your Worker URL.
+Copy this URL - you'll need it for configuring your Slack app endpoints.
+The URL will typically look like: `https://github-airia-slackbot.your-subdomain.workers.dev`
 
 #### 7.1 Create Slack App
 
@@ -265,14 +262,14 @@ For a quick setup that still requires some manual steps:
      - Click "Slash Commands" in the sidebar
      - Click "Create New Command"
      - Command: `/ask-airia`
-     - Request URL: `https://your-worker.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
      - Description: "Ask Airia a question"
      - Click "Save"
 
    - **Event Subscriptions:**
      - Click "Event Subscriptions" in the sidebar
      - Toggle "Enable Events" to On
-     - Request URL: `https://your-worker.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
      - The bot events should already be subscribed (app_home_opened, app_mention, message.im, link_shared)
      - Under "App unfurl domains", add yourdomain.com (if using link unfurling)
      - Click "Save Changes"
@@ -280,7 +277,7 @@ For a quick setup that still requires some manual steps:
    - **Interactivity & Shortcuts:**
      - Click "Interactivity & Shortcuts" in the sidebar
      - Toggle to On
-     - Request URL: `https://your-worker.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
      - Add shortcuts, message actions, and workflow steps (see manual setup instructions below)
      - Click "Save Changes"
 
@@ -307,7 +304,7 @@ In the Slack App settings:
 **Slash Commands:**
 1. Click "Create New Command"
 2. Command: `/ask-airia`
-3. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+3. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
 4. Short Description: "Ask a question to Airia"
 5. Click "Save"
 
@@ -340,7 +337,7 @@ In the Slack App settings:
 
 **Event Subscriptions:**
 1. Enable Events: Toggle "On"
-2. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
 3. Under "Subscribe to bot events", add:
    - `app_home_opened`
    - `app_mention`
@@ -351,7 +348,7 @@ In the Slack App settings:
 
 **Interactivity & Shortcuts:**
 1. Enable Interactivity: Toggle "On"
-2. Request URL: `https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/slack`
+2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
 3. Under "Shortcuts", click "Create New Shortcut"
 4. Create a Global shortcut:
    - Name: "Ask Airia"
@@ -390,7 +387,7 @@ npx wrangler secret put Slack_Bot_Token
 The development deployment includes a `/test` endpoint for basic verification:
 ```bash
 # Test the development deployment's test endpoint
-curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
+curl https://github-airia-slackbot.your-subdomain.workers.dev/test
 # Should return: {"status":"ok","environment":"development"}
 ```
 
@@ -399,7 +396,7 @@ curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
 The production deployment has the `/test` endpoint disabled for security:
 ```bash
 # This should return a 404 in production
-curl https://airia-slackbot.YOUR_SUBDOMAIN.workers.dev/test
+curl https://github-airia-slackbot.your-subdomain.workers.dev/test
 # Should return: Not found
 ```
 
