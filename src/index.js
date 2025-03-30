@@ -29,6 +29,15 @@ function partialKey(key) {
 }
 
 /**
+ * Verbose logging function for development mode
+ * Controls logging level based on environment
+ * SECURITY NOTE: Development only - disabled in production to avoid leaking secrets
+ */
+function isVerboseLogging(env) {
+  return env.ENVIRONMENT !== 'production' && env.VERBOSE_LOGGING !== 'false';
+}
+
+/**
  * Logger to confirm env vars are set
  * SECURITY NOTE: For development only - should be disabled in production
  * as it could leak partial secrets to logs
@@ -44,6 +53,11 @@ function logEnvValues(env) {
   console.log('[ENV] Airia_API_key is set:', !!env.Airia_API_key);
   console.log('[ENV] Slack_Signing_Secret is set:', !!env.Slack_Signing_Secret);
   console.log('[ENV] Slack_Bot_Token is set:', !!env.Slack_Bot_Token);
+  console.log('[ENV] VERBOSE_LOGGING:', env.VERBOSE_LOGGING !== 'false' ? 'enabled' : 'disabled');
+  
+  if (isVerboseLogging(env)) {
+    console.log('[ENV-VERBOSE] Additional debug logging is enabled');
+  }
 }
 
 /**
@@ -645,7 +659,12 @@ async function processThreadSummary(payload, env) {
   console.log('[SUMMARY] Processing summarize request');
   
   try {
-    console.log('[SUMMARY] Starting summary processing with payload:', JSON.stringify(payload, null, 2).substring(0, 500) + '...');
+    // In verbose mode, log the full payload
+    if (isVerboseLogging(env)) {
+      console.log('[SUMMARY-VERBOSE] Full payload:', JSON.stringify(payload, null, 2));
+    } else {
+      console.log('[SUMMARY] Starting summary processing with payload:', JSON.stringify(payload, null, 2).substring(0, 500) + '...');
+    }
     
     // 1. Extract basic info from payload
     let channelId, userId, targetTs;
@@ -825,6 +844,16 @@ async function processThreadSummary(payload, env) {
         const apiUrl = `https://slack.com/api/conversations.replies?channel=${encodeURIComponent(requestParams.channel)}&ts=${encodeURIComponent(requestParams.ts)}`;
         console.log('[SUMMARY] API URL:', apiUrl);
         
+        if (isVerboseLogging(env)) {
+          console.log('[SUMMARY-VERBOSE] Thread API full details:', {
+            method: 'GET',
+            url: apiUrl,
+            channelId: requestParams.channel,
+            timestamp: requestParams.ts,
+            hasToken: !!env.Slack_Bot_Token
+          });
+        }
+        
         const threadResponse = await fetch(apiUrl, {
           method: 'GET',
           headers: {
@@ -832,6 +861,12 @@ async function processThreadSummary(payload, env) {
             'Accept': 'application/json',
           }
         });
+        
+        // Log response status and headers in verbose mode
+        if (isVerboseLogging(env)) {
+          console.log('[SUMMARY-VERBOSE] Thread API response status:', threadResponse.status);
+          console.log('[SUMMARY-VERBOSE] Thread API response headers:', Object.fromEntries([...threadResponse.headers.entries()]));
+        }
         
         const threadData = await threadResponse.json();
         
@@ -904,38 +939,79 @@ async function processThreadSummary(payload, env) {
       }
     }
     
-    // APPROACH B: If we don't have messages and have a target message, get it
+    // APPROACH B: If we don't have messages and have a target message, get it with surrounding context
     if (messages.length === 0 && targetTs) {
       try {
-        console.log('[SUMMARY] Getting single message with ts:', targetTs);
+        console.log('[SUMMARY] Getting message with context for ts:', targetTs);
         
-        const singleResponse = await fetch(`https://slack.com/api/conversations.history`, {
-          method: 'POST',
+        // Get a few messages before the target message for context
+        const beforeResponse = await fetch(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&latest=${encodeURIComponent(targetTs)}&limit=3&inclusive=false`, {
+          method: 'GET',
           headers: {
             Authorization: `Bearer ${env.Slack_Bot_Token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            channel: channelId,
-            latest: targetTs,
-            limit: 1,
-            inclusive: true,
-          }),
+            'Accept': 'application/json',
+          }
         });
         
-        const singleData = await singleResponse.json();
+        const beforeData = await beforeResponse.json();
+        let contextMessages = [];
         
-        if (singleData.ok && singleData.messages && singleData.messages.length > 0) {
-          console.log('[SUMMARY] Successfully got single message');
-          messages = singleData.messages;
-          contextType = 'single';
-          replyToTs = targetTs;  // Reply to the specific message
+        if (beforeData.ok && beforeData.messages && beforeData.messages.length > 0) {
+          console.log('[SUMMARY] Got', beforeData.messages.length, 'messages before the target');
+          // Reverse to get chronological order
+          contextMessages = [...beforeData.messages].reverse();
+        }
+        
+        // Get the target message
+        const targetResponse = await fetch(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&latest=${encodeURIComponent(targetTs)}&limit=1&inclusive=true`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${env.Slack_Bot_Token}`,
+            'Accept': 'application/json',
+          }
+        });
+        
+        const targetData = await targetResponse.json();
+        
+        if (targetData.ok && targetData.messages && targetData.messages.length > 0) {
+          console.log('[SUMMARY] Successfully got target message');
+          // Add the target message to context
+          contextMessages.push(...targetData.messages);
+          
+          // Get a few messages after the target for additional context
+          const afterTimestamp = (parseFloat(targetTs) + 0.000001).toString();
+          const afterResponse = await fetch(`https://slack.com/api/conversations.history?channel=${encodeURIComponent(channelId)}&oldest=${encodeURIComponent(afterTimestamp)}&limit=2`, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${env.Slack_Bot_Token}`,
+              'Accept': 'application/json',
+            }
+          });
+          
+          const afterData = await afterResponse.json();
+          
+          if (afterData.ok && afterData.messages && afterData.messages.length > 0) {
+            console.log('[SUMMARY] Got', afterData.messages.length, 'messages after the target');
+            // Messages are already in reverse chronological order, so reverse them
+            contextMessages.push(...afterData.messages.reverse());
+          }
+          
+          // If we got any messages, use them
+          if (contextMessages.length > 0) {
+            messages = contextMessages;
+            contextType = contextMessages.length > 1 ? 'context' : 'single';
+            replyToTs = targetTs;  // Reply to the specific message
+            console.log('[SUMMARY] Using message with surrounding context:', messages.length, 'total messages');
+          } else {
+            console.warn('[SUMMARY] Failed to get message context');
+            // Continue to next approach
+          }
         } else {
-          console.warn('[SUMMARY] Failed to get single message:', singleData.error);
+          console.warn('[SUMMARY] Failed to get target message:', targetData.error);
           // Continue to next approach
         }
       } catch (singleErr) {
-        console.warn('[SUMMARY] Error fetching single message:', singleErr.message);
+        console.warn('[SUMMARY] Error fetching message with context:', singleErr.message);
         // Continue to next approach
       }
     }
@@ -979,10 +1055,107 @@ async function processThreadSummary(payload, env) {
       throw new Error('No messages available to summarize');
     }
     
-    // 6. Format the messages for the AI
+    // 6. Format the messages for the AI with user information if available
     console.log(`[SUMMARY] Summarizing ${messages.length} messages (${contextType} context)`);
-    const messageText = messages
-      .map(msg => `${msg.user || 'User'}: ${msg.text || '[no text]'}`)
+    
+    // Try to fetch user information for better context
+    // Map of user IDs to display names
+    const userMap = {};
+    
+    // Try to get user names for all unique users in the messages
+    try {
+      const uniqueUserIds = [...new Set(messages.filter(msg => msg.user).map(msg => msg.user))];
+      
+      if (uniqueUserIds.length > 0) {
+        console.log('[SUMMARY] Fetching user info for', uniqueUserIds.length, 'users');
+        
+        if (isVerboseLogging(env)) {
+          console.log('[SUMMARY-VERBOSE] User IDs to fetch:', uniqueUserIds);
+        }
+        
+        // Fetch user information in parallel
+        await Promise.all(uniqueUserIds.map(async (userId) => {
+          try {
+            if (isVerboseLogging(env)) {
+              console.log('[SUMMARY-VERBOSE] Fetching user info for ID:', userId);
+            }
+            
+            const userResponse = await fetch(`https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`, {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${env.Slack_Bot_Token}`,
+                'Accept': 'application/json',
+              }
+            });
+            
+            const userData = await userResponse.json();
+            
+            if (userData.ok && userData.user) {
+              // Use real_name or display_name or fallback to the user ID
+              const userName = userData.user.real_name || 
+                              (userData.user.profile && userData.user.profile.display_name) || 
+                              userId;
+              userMap[userId] = userName;
+              
+              if (isVerboseLogging(env)) {
+                console.log(`[SUMMARY-VERBOSE] User ${userId} resolved to: ${userName}`);
+                console.log(`[SUMMARY-VERBOSE] User details:`, {
+                  id: userId,
+                  real_name: userData.user.real_name,
+                  display_name: userData.user.profile?.display_name,
+                  is_bot: userData.user.is_bot
+                });
+              }
+            } else {
+              if (isVerboseLogging(env)) {
+                console.log(`[SUMMARY-VERBOSE] Failed to get user info:`, userData);
+              }
+            }
+          } catch (userErr) {
+            console.warn('[SUMMARY] Error fetching user info for', userId, userErr.message);
+            if (isVerboseLogging(env)) {
+              console.error('[SUMMARY-VERBOSE] User fetch error details:', userErr);
+            }
+          }
+        }));
+        
+        if (isVerboseLogging(env)) {
+          console.log('[SUMMARY-VERBOSE] Completed user map:', userMap);
+        }
+      }
+    } catch (userMapErr) {
+      console.warn('[SUMMARY] Error creating user map:', userMapErr.message);
+      if (isVerboseLogging(env)) {
+        console.error('[SUMMARY-VERBOSE] User map error details:', userMapErr);
+      }
+    }
+    
+    // Format messages with user names when available
+    const formattedMessages = messages.map(msg => {
+      const userName = msg.user ? (userMap[msg.user] || msg.user) : 'User';
+      return {
+        userName,
+        userId: msg.user,
+        text: msg.text || '[no text]',
+        ts: msg.ts,
+        isHighlighted: (msg.ts === targetTs) // Mark the target message for emphasis
+      };
+    });
+    
+    if (isVerboseLogging(env)) {
+      console.log('[SUMMARY-VERBOSE] Formatted messages with user info:', formattedMessages);
+    }
+    
+    // Convert to text with special formatting for the target message
+    const messageText = formattedMessages
+      .map(msg => {
+        // Highlight the target message in the context if applicable
+        if (contextType === 'context' && msg.isHighlighted) {
+          return `>> ${msg.userName}: ${msg.text} <<`;
+        } else {
+          return `${msg.userName}: ${msg.text}`;
+        }
+      })
       .join('\n');
     
     // 7. Limit text size if needed
@@ -994,6 +1167,7 @@ async function processThreadSummary(payload, env) {
     const promptMap = {
       'thread': 'Summarize this conversation thread:',
       'single': 'Summarize this message:',
+      'context': 'Summarize this message with its surrounding context:',
       'recent': 'Summarize these recent messages from a conversation:'
     };
     
@@ -1025,6 +1199,7 @@ async function processThreadSummary(payload, env) {
     const titleMap = {
       'thread': '*Thread Summary:*',
       'single': '*Message Summary:*',
+      'context': '*Message Context Summary:*',
       'recent': '*Conversation Summary:*'
     };
     
