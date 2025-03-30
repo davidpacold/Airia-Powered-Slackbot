@@ -694,7 +694,8 @@ async function processThreadSummary(payload, env) {
           channel: channelId,
           latest: messageTs,
           limit: 1,
-          inclusive: true
+          inclusive: true,
+          include_all_metadata: true // Get full thread metadata
         }),
       });
       
@@ -744,6 +745,21 @@ async function processThreadSummary(payload, env) {
       
       // Check if it's a thread or not
       isThread = !!(firstMessage.thread_ts || firstMessage.reply_count);
+      
+      // Additional debugging to help understand why thread detection might be failing
+      console.log('[SUMMARY] Thread detection details:', {
+        messageTs,
+        firstMessage_ts: firstMessage.ts,
+        thread_ts: firstMessage.thread_ts,
+        reply_count: firstMessage.reply_count,
+        has_replies: firstMessage.reply_count > 0
+      });
+      
+      // For messages that have replies but don't have thread_ts set, we should still consider them threads
+      if (firstMessage.reply_count && firstMessage.reply_count > 0) {
+        isThread = true;
+      }
+      
       console.log('[SUMMARY] Is message part of a thread?', isThread);
       
     } catch (accessErr) {
@@ -763,8 +779,47 @@ async function processThreadSummary(payload, env) {
       
       // isThread is now properly initialized above
       
+      // Before deciding on thread vs non-thread approach, do a direct check with conversations.replies
+      // This ensures we handle cases where the API might not return thread metadata consistently
+      let forcedThreadCheck = false;
+      
+      if (!isThread) {
+        console.log('[SUMMARY] Performing a direct thread check to verify thread status');
+        
+        try {
+          // Try to get replies - if this works, it's a thread regardless of metadata
+          const threadCheckResponse = await fetch(`https://slack.com/api/conversations.replies`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${env.Slack_Bot_Token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              channel: channelId,
+              ts: messageTs,
+            }),
+          });
+          
+          const threadCheckData = await threadCheckResponse.json();
+          
+          // If replies has more than 1 message, it's a thread
+          if (threadCheckData.ok && threadCheckData.messages && threadCheckData.messages.length > 1) {
+            console.log('[SUMMARY] Direct thread check found replies:', threadCheckData.messages.length);
+            isThread = true;
+            forcedThreadCheck = true;
+            // Use the already fetched replies
+            messages = threadCheckData.messages;
+            contextType = 'thread';
+          } else {
+            console.log('[SUMMARY] Direct thread check found no replies');
+          }
+        } catch (checkErr) {
+          console.log('[SUMMARY] Error during direct thread check:', checkErr.message);
+        }
+      }
+      
       // Branch based on whether it's a thread or regular message
-      if (isThread) {
+      if (isThread && !forcedThreadCheck) {
         // Get thread replies for a threaded message
         const threadResponse = await fetch(`https://slack.com/api/conversations.replies`, {
           method: 'POST',
@@ -829,7 +884,7 @@ async function processThreadSummary(payload, env) {
             contextType = 'single message';
           }
         }
-      } else {
+      } else if (!forcedThreadCheck) {
         // For non-threaded messages, get recent messages in the channel
         console.log('[SUMMARY] Not a thread, fetching context from conversation history');
         
@@ -843,6 +898,7 @@ async function processThreadSummary(payload, env) {
           body: JSON.stringify({
             channel: channelId,
             limit: 10, // Get last 10 messages
+            include_all_metadata: true // Get full thread metadata
           }),
         });
         

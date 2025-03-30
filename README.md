@@ -631,6 +631,14 @@ If you see errors related to permissions like `missing_scope` in your logs:
 3. Reinstall the app to your workspace to apply the new permissions
 4. For private channels, manually invite the bot with `/invite @AI Assistant`
 
+#### Thread detection issues
+
+If the "Summarize Thread" action is not correctly identifying threads:
+1. Ensure the bot has `channels:history` and `channels:join` permissions
+2. Check that the bot has been added to the channel
+3. Try using the action on the first message in the thread (thread parent)
+4. For private channels, use `/invite @AI Assistant` before using thread features
+
 ## Support
 
 For issues with this bot, please open an issue in this repository.
