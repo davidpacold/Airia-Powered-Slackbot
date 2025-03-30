@@ -151,9 +151,11 @@ Update the Airia API URLs in the `wrangler.toml` file to point to your specific 
 
 The current wrangler.toml already contains placeholder Airia API URLs. You should replace these with your actual API endpoints for both development and production environments.
 
-### 5. Add Secrets
+### 5. Prepare for Required Secrets
 
 #### Where to Find Each Secret
+
+Before you deploy, you'll need these secrets. Here's where to find them:
 
 - **Airia_API_key**: 
   - This is your API key for the Airia service
@@ -170,26 +172,10 @@ The current wrangler.toml already contains placeholder Airia API URLs. You shoul
   - Look for "Bot User OAuth Token" that starts with `xoxb-`
   - You must install the app to your workspace first to get this token
 
-#### Add Secrets to Your Worker
-
-```bash
-# Development environment secrets
-npx wrangler secret put Airia_API_key
-# When prompted, enter your Airia API key
-
-npx wrangler secret put Slack_Signing_Secret
-# When prompted, enter your Slack Signing Secret
-
-npx wrangler secret put Slack_Bot_Token
-# When prompted, enter your Slack Bot Token
-
-# Production environment secrets
-npx wrangler secret put Airia_API_key --env production
-npx wrangler secret put Slack_Signing_Secret --env production
-npx wrangler secret put Slack_Bot_Token --env production
-```
-
-> **Important**: The signature verification in the code will be skipped if `Slack_Signing_Secret` isn't set yet. This helps during initial setup/verification of your Slack endpoints. Once you have your app fully configured, make sure to set this secret for secure operation.
+> **Note**: We will configure these secrets after setting up the Slack app in step 7.3. 
+> The signature verification in the code will be skipped if `Slack_Signing_Secret` isn't set yet. 
+> This helps during initial setup/verification of your Slack endpoints. Once you have your app 
+> fully configured, make sure to set this secret for secure operation.
 
 ### 6. Deploy Worker
 
@@ -367,18 +353,33 @@ In the Slack App settings:
 4. Callback ID: `generate_response`
 5. Click "Save"
 
-#### 7.3 Verify Configuration
+#### 7.3 Configure Secrets for Both Environments
 
-If you haven't already added the Slack secrets, add them now:
+You need to configure the required secrets for both development and production environments:
 
 ```bash
-# Add/update the Slack secrets with values from the Slack app configuration
+# Development environment secrets
 npx wrangler secret put Slack_Signing_Secret
-# Enter the signing secret from Basic Information
+# Enter the signing secret from Basic Information > App Credentials
 
 npx wrangler secret put Slack_Bot_Token
 # Enter the Bot User OAuth Token from OAuth & Permissions
+
+npx wrangler secret put Airia_API_key
+# Enter your Airia API key
+
+# Production environment secrets
+npx wrangler secret put Slack_Signing_Secret --env production
+# Enter the same signing secret (or a different one if using separate Slack apps)
+
+npx wrangler secret put Slack_Bot_Token --env production
+# Enter the same Bot User OAuth Token (or a different one if using separate Slack apps)
+
+npx wrangler secret put Airia_API_key --env production
+# Enter your production Airia API key (may be the same as development)
 ```
+
+> **Important**: Make sure to set secrets for both environments before deployment to ensure everything works correctly. If you're using the same Slack app for both environments, the Slack secrets will be identical, but you might use different Airia API keys.
 
 #### 7.4 Testing Your Deployment
 
@@ -531,13 +532,12 @@ vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL", 
 
 > **Note**: With wrangler 4.x and newer, inline tables must be on a single line
 
-Remember to set environment-specific secrets:
-```
-# Development secrets
-wrangler secret put Airia_API_key
-
-# Production secrets
-wrangler secret put Airia_API_key --env production
+Remember that each environment needs its own set of secrets as described in section 7.3:
+```bash
+# Development and production environments each need these secrets:
+# - Airia_API_key
+# - Slack_Signing_Secret
+# - Slack_Bot_Token
 ```
 
 ## Slack Commands
