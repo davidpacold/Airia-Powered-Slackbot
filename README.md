@@ -91,14 +91,14 @@ npm install
 
 ### 2. Set Up Cloudflare Worker
 
-#### If you don't have wrangler installed:
+#### If you don't have  installed:
 
-This guide uses `npx wrangler` to run wrangler commands without requiring a global installation.
+This guide uses `npx ` to run  commands without requiring a global installation.
 
-#### If you already have wrangler installed globally:
+#### If you already have  installed globally:
 
 ```bash
-# Check your wrangler version
+# Check your  version
 wrangler --version
 
 # If you see "update available" message, update to latest v4.x version
@@ -491,7 +491,7 @@ npx wrangler dev --env production
 #### Deploy to Development
 
 ```
-wrangler deploy
+npx wrangler deploy
 ```
 
 This deploys using the default environment in `wrangler.toml`.
@@ -499,7 +499,7 @@ This deploys using the default environment in `wrangler.toml`.
 #### Deploy to Production
 
 ```
-wrangler deploy --env production
+npx wrangler deploy --env production
 ```
 
 This uses the production-specific configuration in `wrangler.toml` with:
