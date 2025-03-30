@@ -441,6 +441,36 @@ This project supports multiple environments to separate development and producti
 
 > **Note**: This project includes wrangler as a dev dependency in package.json, so you don't need to install it globally. The npm scripts (`npm run dev`, `npm run deploy`) will use the local version. However, this project may have an older version - check with `npx wrangler --version` and if it shows "update available," run `npm install --save-dev wrangler@4` to update to the latest v4.x version.
 
+### Environment Configuration
+
+Edit the `wrangler.toml` file to configure environments:
+
+```toml
+# Default (development) environment
+[vars]
+AIRIA_API_URL = "YOUR_DEV_API_URL"
+ENVIRONMENT = "development"
+VERBOSE_LOGGING = "true"  # Set to "false" to disable verbose logging
+
+# Development-specific configuration
+[env.development]
+vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL", VERBOSE_LOGGING = "true" }
+
+# Production environment
+[env.production]
+vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL", VERBOSE_LOGGING = "false" }
+```
+
+> **Note**: With wrangler 4.x and newer, inline tables must be on a single line
+
+Remember that each environment needs its own set of secrets as described in section 7.3:
+```bash
+# Development and production environments each need these secrets:
+# - Airia_API_key
+# - Slack_Signing_Secret
+# - Slack_Bot_Token
+```
+
 ### Local Development
 
 Start a local development server:
@@ -474,6 +504,7 @@ To receive Slack events during local development, use Cloudflare Tunnel:
    ```
 
 3. Use the temporary URL provided by Cloudflare Tunnel as your Slack bot's request URL
+
 
 ### Environment-specific Development
 
@@ -509,36 +540,6 @@ This uses the production-specific configuration in `wrangler.toml` with:
 - Minimal logging (no sensitive data, even partially)
 - No environment variable logging
 - Production-appropriate security settings
-
-### Environment Configuration
-
-Edit the `wrangler.toml` file to configure environments:
-
-```toml
-# Default (development) environment
-[vars]
-AIRIA_API_URL = "YOUR_DEV_API_URL"
-ENVIRONMENT = "development"
-VERBOSE_LOGGING = "true"  # Set to "false" to disable verbose logging
-
-# Development-specific configuration
-[env.development]
-vars = { ENVIRONMENT = "development", AIRIA_API_URL = "YOUR_DEV_API_URL", VERBOSE_LOGGING = "true" }
-
-# Production environment
-[env.production]
-vars = { ENVIRONMENT = "production", AIRIA_API_URL = "YOUR_PRODUCTION_API_URL", VERBOSE_LOGGING = "false" }
-```
-
-> **Note**: With wrangler 4.x and newer, inline tables must be on a single line
-
-Remember that each environment needs its own set of secrets as described in section 7.3:
-```bash
-# Development and production environments each need these secrets:
-# - Airia_API_key
-# - Slack_Signing_Secret
-# - Slack_Bot_Token
-```
 
 ## Slack Commands
 
