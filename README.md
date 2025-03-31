@@ -248,14 +248,14 @@ For a quick setup that still requires some manual steps:
      - Click "Slash Commands" in the sidebar
      - Click "Create New Command"
      - Command: `/ask-airia`
-     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
      - Description: "Ask Airia a question"
      - Click "Save"
 
    - **Event Subscriptions:**
      - Click "Event Subscriptions" in the sidebar
      - Toggle "Enable Events" to On
-     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
      - The bot events should already be subscribed (app_home_opened, app_mention, message.im, link_shared)
      - Under "App unfurl domains", add yourdomain.com (if using link unfurling)
      - Click "Save Changes"
@@ -263,7 +263,7 @@ For a quick setup that still requires some manual steps:
    - **Interactivity & Shortcuts:**
      - Click "Interactivity & Shortcuts" in the sidebar
      - Toggle to On
-     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+     - Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
      - Add shortcuts, message actions, and workflow steps (see manual setup instructions below)
      - Click "Save Changes"
 
@@ -290,7 +290,7 @@ In the Slack App settings:
 **Slash Commands:**
 1. Click "Create New Command"
 2. Command: `/ask-airia`
-3. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+3. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
 4. Short Description: "Ask a question to Airia"
 5. Click "Save"
 
@@ -323,7 +323,7 @@ In the Slack App settings:
 
 **Event Subscriptions:**
 1. Enable Events: Toggle "On"
-2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
 3. Under "Subscribe to bot events", add:
    - `app_home_opened`
    - `app_mention`
@@ -334,7 +334,7 @@ In the Slack App settings:
 
 **Interactivity & Shortcuts:**
 1. Enable Interactivity: Toggle "On"
-2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack`
+2. Request URL: `https://github-airia-slackbot.your-subdomain.workers.dev/slack` (for development) or `https://github-airia-slackbot-production.your-subdomain.workers.dev/slack` (for production)
 3. Under "Shortcuts", click "Create New Shortcut"
 4. Create a Global shortcut:
    - Name: "Ask Airia"
@@ -383,6 +383,15 @@ npx wrangler secret put Airia_API_key --env production
 
 #### 7.4 Testing Your Deployment
 
+**Important Note on Deployment URLs:**
+
+When deploying to different environments, the URLs will be different:
+
+- Development URL: `https://github-airia-slackbot.your-subdomain.workers.dev`
+- Production URL: `https://github-airia-slackbot-production.your-subdomain.workers.dev`
+
+The production URL has `-production` appended to the worker name. This means you'll need to update your Slack app configuration when switching between environments.
+
 **Development Environment Testing:**
 
 The development deployment includes a `/test` endpoint for basic verification:
@@ -397,7 +406,7 @@ curl https://github-airia-slackbot.your-subdomain.workers.dev/test
 The production deployment has the `/test` endpoint disabled for security:
 ```bash
 # This should return a 404 in production
-curl https://github-airia-slackbot.your-subdomain.workers.dev/test
+curl https://github-airia-slackbot-production.your-subdomain.workers.dev/test
 # Should return: Not found
 ```
 
@@ -525,7 +534,8 @@ npx wrangler dev --env production
 npx wrangler deploy
 ```
 
-This deploys using the default environment in `wrangler.toml`.
+This deploys using the default environment in `wrangler.toml`, creating a URL like:
+`https://github-airia-slackbot.your-subdomain.workers.dev`
 
 #### Deploy to Production
 
@@ -533,13 +543,18 @@ This deploys using the default environment in `wrangler.toml`.
 npx wrangler deploy --env production
 ```
 
-This uses the production-specific configuration in `wrangler.toml` with:
+This creates a different URL with `-production` appended to the worker name:
+`https://github-airia-slackbot-production.your-subdomain.workers.dev`
+
+The production environment uses production-specific configuration in `wrangler.toml` with:
 - `ENVIRONMENT = "production"` variable 
 - `VERBOSE_LOGGING = "false"` to reduce log volume in production
 - Disabled `/test` endpoint for security (returns 404)
 - Minimal logging (no sensitive data, even partially)
 - No environment variable logging
 - Production-appropriate security settings
+
+> **Important**: Since development and production deployments have different URLs, you'll need to reconfigure your Slack app's request URLs when switching between environments. This includes updating the request URLs for Events, Interactivity, Slash Commands, and other features in your Slack app settings.
 
 ## Slack Commands
 
