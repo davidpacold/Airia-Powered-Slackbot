@@ -683,7 +683,4 @@ For enhanced debugging:
 
 If you encounter issues with specific messages, review the logs for detailed information about what happened.
 
-## Support
 
-For issues with this bot, please open an issue in this repository.
-For issues with the Airia API, contact your Airia administrator.
