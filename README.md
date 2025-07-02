@@ -587,19 +587,11 @@ npm test
 5. Implement environment-specific logging levels
 6. Regularly rotate your API keys and tokens
 
-## License
+## Support and Guarantees
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is provided as-is, without any official support. While you are welcome to open issues in the repository, there is no guarantee of a response or resolution. The software is provided with no guarantees that it will work in the future, as it may be impacted by changes to the underlying APIs or platforms it relies on.
 
-## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## Customizing for Different API Formats
 
